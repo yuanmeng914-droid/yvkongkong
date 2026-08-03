@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#17233b" />
+    <title>续日 — 会把未完成带到明天的备忘录</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="续日首页">
+          <span class="brand-mark" aria-hidden="true">续</span>
+          <span>续日</span>
+        </a>
+        <p class="date-context" id="dateContext"></p>
+        <button class="quiet-button" id="todayButton" type="button">回到今天</button>
+      </header>
+
+      <section class="day-stage" aria-labelledby="dayTitle">
+        <div class="day-heading">
+          <div>
+            <p class="eyebrow" id="relativeDay">今天</p>
+            <h1 id="dayTitle"></h1>
+          </div>
+          <nav class="date-nav" aria-label="切换日期">
+            <button id="prevDay" type="button" aria-label="前一天">←</button>
+            <button id="nextDay" type="button" aria-label="后一天">→</button>
+          </nav>
+        </div>
+
+        <form class="task-composer" id="taskForm">
+          <label class="sr-only" for="taskInput">添加一件要做的事</label>
+          <input id="taskInput" name="task" autocomplete="off" maxlength="120" placeholder="今天要推进什么？" required />
+          <button type="submit">加入今天</button>
+        </form>
+
+        <div class="progress-row">
+          <p id="progressText">还没有任务</p>
+          <div class="progress-track" aria-hidden="true"><span id="progressBar"></span></div>
+        </div>
+
+        <ol class="task-list" id="taskList" aria-live="polite"></ol>
+
+        <div class="empty-state" id="emptyState" hidden>
+          <div class="empty-ring" aria-hidden="true">○</div>
+          <h2>这一天还是空白</h2>
+          <p>写下一件值得推进的小事，完成后亲手划掉它。</p>
+        </div>
+
+        <footer class="day-footer">
+          <p><span class="carry-symbol">↗</span> 未完成的任务会在进入下一天时自动顺延</p>
+          <button class="advance-button" id="advanceDay" type="button">收好今天，进入明天 <span>→</span></button>
+        </footer>
+      </section>
+    </main>
+
+    <template id="taskTemplate">
+      <li class="task-item">
+        <button class="check-button" type="button" aria-label="标记完成"><span></span></button>
+        <div class="task-copy">
+          <p class="task-text"></p>
+          <p class="task-meta"></p>
+        </div>
+        <button class="delete-button" type="button" aria-label="删除任务">×</button>
+      </li>
+    </template>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
