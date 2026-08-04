@@ -3,56 +3,110 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#17233b" />
-    <title>续日 — 会把未完成带到明天的备忘录</title>
+    <meta name="theme-color" content="#eaf1ee" />
+    <meta name="description" content="明日复明日——不催促、不评判，今天没做完的，明天还可以继续。" />
+    <title>明日复明日</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="app-shell">
       <header class="topbar">
-        <a class="brand" href="#" aria-label="续日首页">
-          <span class="brand-mark" aria-hidden="true">续</span>
-          <span>续日</span>
+        <a class="brand" href="#today" data-view-link="today" aria-label="明日复明日首页">
+          <span class="brand-sun" aria-hidden="true"></span>
+          <span>明日复明日</span>
         </a>
-        <p class="date-context" id="dateContext"></p>
-        <button class="quiet-button" id="todayButton" type="button">回到今天</button>
+        <nav class="main-nav" aria-label="主要导航">
+          <button class="nav-link active" data-view-link="today" type="button">我的明日</button>
+          <button class="nav-link" data-view-link="feedback" type="button">说点什么</button>
+        </nav>
+        <button class="account-button" id="accountButton" type="button">
+          <span class="account-dot" aria-hidden="true"></span>
+          <span id="accountLabel">登录</span>
+        </button>
       </header>
 
-      <section class="day-stage" aria-labelledby="dayTitle">
-        <div class="day-heading">
-          <div>
-            <p class="eyebrow" id="relativeDay">今天</p>
-            <h1 id="dayTitle"></h1>
+      <section class="view active" id="todayView" data-view="today">
+        <div class="day-stage" aria-labelledby="dayTitle">
+          <div class="day-heading">
+            <div>
+              <p class="eyebrow" id="relativeDay">今天</p>
+              <h1 id="dayTitle"></h1>
+              <p class="day-whisper" id="dayWhisper">不用一次做好所有事。</p>
+            </div>
+            <nav class="date-nav" aria-label="切换日期">
+              <button id="prevDay" type="button" aria-label="前一天">←</button>
+              <button id="todayButton" type="button">今天</button>
+              <button id="nextDay" type="button" aria-label="后一天">→</button>
+            </nav>
           </div>
-          <nav class="date-nav" aria-label="切换日期">
-            <button id="prevDay" type="button" aria-label="前一天">←</button>
-            <button id="nextDay" type="button" aria-label="后一天">→</button>
-          </nav>
+
+          <form class="task-composer" id="taskForm">
+            <label class="sr-only" for="taskInput">添加一件想做的事</label>
+            <input id="taskInput" autocomplete="off" maxlength="120" placeholder="如果愿意，今天想做点什么？" required />
+            <button type="submit">放进今天</button>
+          </form>
+
+          <div class="sync-note" id="syncNote">
+            <span class="sync-icon" aria-hidden="true">⌁</span>
+            <span id="syncText">任务只保存在这台设备</span>
+            <button id="syncAction" type="button">登录后同步</button>
+          </div>
+
+          <div class="progress-row">
+            <p id="progressText">今天还没有安排</p>
+            <div class="progress-track" aria-hidden="true"><span id="progressBar"></span></div>
+          </div>
+
+          <ol class="task-list" id="taskList" aria-live="polite"></ol>
+
+          <div class="empty-state" id="emptyState" hidden>
+            <div class="tomorrow-orbit" aria-hidden="true"><span></span></div>
+            <h2>今天还很轻</h2>
+            <p>没有安排也没关系。想到什么，再写下来。</p>
+          </div>
+
+          <footer class="day-footer">
+            <div>
+              <p class="tomorrow-line"><span></span> 明天一直都在</p>
+              <p>没完成的不会逾期，只会陪你走到下一天。</p>
+            </div>
+            <button class="advance-button" id="advanceDay" type="button">剩下的，明天继续 <span>→</span></button>
+          </footer>
         </div>
+      </section>
 
-        <form class="task-composer" id="taskForm">
-          <label class="sr-only" for="taskInput">添加一件要做的事</label>
-          <input id="taskInput" name="task" autocomplete="off" maxlength="120" placeholder="今天要推进什么？" required />
-          <button type="submit">加入今天</button>
-        </form>
-
-        <div class="progress-row">
-          <p id="progressText">还没有任务</p>
-          <div class="progress-track" aria-hidden="true"><span id="progressBar"></span></div>
+      <section class="view" id="feedbackView" data-view="feedback" aria-labelledby="feedbackTitle">
+        <div class="feedback-layout">
+          <div class="feedback-intro">
+            <p class="eyebrow">写给开发者</p>
+            <h1 id="feedbackTitle">你的感受，<br />会让下一个明天更好。</h1>
+            <p>遇到问题、想到一个新功能，或者只是想说说使用感受，都可以写在这里。我们不会附带上传你的待办内容。</p>
+          </div>
+          <form class="feedback-form" id="feedbackForm">
+            <fieldset>
+              <legend>这次想说什么？</legend>
+              <div class="type-options">
+                <label><input type="radio" name="feedbackType" value="suggestion" checked /><span>一个建议</span></label>
+                <label><input type="radio" name="feedbackType" value="bug" /><span>遇到问题</span></label>
+                <label><input type="radio" name="feedbackType" value="feeling" /><span>使用感受</span></label>
+              </div>
+            </fieldset>
+            <label for="feedbackMessage">具体说说</label>
+            <textarea id="feedbackMessage" maxlength="2000" placeholder="我希望……" required></textarea>
+            <label for="feedbackEmail">联系邮箱 <small>选填</small></label>
+            <input id="feedbackEmail" type="email" autocomplete="email" placeholder="如果希望收到回复，可以留下邮箱" />
+            <p class="form-hint" id="feedbackHint">登录后可以发送反馈。</p>
+            <button class="primary-button" type="submit">把反馈送给开发者</button>
+          </form>
         </div>
+      </section>
 
-        <ol class="task-list" id="taskList" aria-live="polite"></ol>
-
-        <div class="empty-state" id="emptyState" hidden>
-          <div class="empty-ring" aria-hidden="true">○</div>
-          <h2>这一天还是空白</h2>
-          <p>写下一件值得推进的小事，完成后亲手划掉它。</p>
+      <section class="view" id="feedbackAdminView" data-view="feedback-admin" aria-labelledby="adminTitle">
+        <div class="admin-panel">
+          <p class="eyebrow">开发者视图</p>
+          <h1 id="adminTitle">收到的反馈</h1>
+          <div class="feedback-list" id="feedbackList"></div>
         </div>
-
-        <footer class="day-footer">
-          <p><span class="carry-symbol">↗</span> 未完成的任务会在进入下一天时自动顺延</p>
-          <button class="advance-button" id="advanceDay" type="button">收好今天，进入明天 <span>→</span></button>
-        </footer>
       </section>
     </main>
 
@@ -63,11 +117,58 @@
           <p class="task-text"></p>
           <p class="task-meta"></p>
         </div>
+        <button class="edit-button" type="button" aria-label="编辑任务">编辑</button>
         <button class="delete-button" type="button" aria-label="删除任务">×</button>
       </li>
     </template>
 
+    <dialog class="modal" id="authDialog">
+      <button class="modal-close" data-close-dialog="authDialog" aria-label="关闭" type="button">×</button>
+      <div class="auth-copy">
+        <p class="eyebrow">把明天带在身边</p>
+        <h2 id="authTitle">欢迎回来</h2>
+        <p id="authSubtitle">登录后，任务会在你的设备之间同步。</p>
+      </div>
+      <form id="authForm">
+        <label for="authEmail">邮箱</label>
+        <input id="authEmail" type="email" autocomplete="email" required />
+        <label for="authPassword">密码</label>
+        <input id="authPassword" type="password" autocomplete="current-password" minlength="8" required />
+        <p class="form-error" id="authError"></p>
+        <button class="primary-button" id="authSubmit" type="submit">登录</button>
+      </form>
+      <div class="auth-switches">
+        <button id="authModeSwitch" type="button">还没有账号？注册</button>
+        <button id="resetPassword" type="button">忘记密码</button>
+      </div>
+    </dialog>
+
+    <dialog class="modal account-modal" id="accountDialog">
+      <button class="modal-close" data-close-dialog="accountDialog" aria-label="关闭" type="button">×</button>
+      <p class="eyebrow">我的账号</p>
+      <h2 id="accountEmail"></h2>
+      <p class="account-state"><span></span> 所有任务已安全同步</p>
+      <div class="account-actions">
+        <button id="exportData" type="button">导出我的任务</button>
+        <button id="openPrivacy" type="button">隐私与数据</button>
+        <button id="signOut" type="button">退出登录</button>
+        <button class="danger-link" id="requestDeletion" type="button">申请删除账号和数据</button>
+      </div>
+    </dialog>
+
+    <dialog class="modal privacy-modal" id="privacyDialog">
+      <button class="modal-close" data-close-dialog="privacyDialog" aria-label="关闭" type="button">×</button>
+      <p class="eyebrow">隐私与数据</p>
+      <h2>你的待办，只属于你。</h2>
+      <div class="privacy-copy">
+        <p>我们保存你的登录邮箱、待办内容、日期和完成状态，用于跨设备同步。</p>
+        <p>开发者反馈不会自动附带你的待办内容。其他用户无法查看你的任务。</p>
+        <p>你可以随时导出数据，或申请删除账号及其关联数据。</p>
+      </div>
+    </dialog>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js"></script>
+    <script src="config.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>
