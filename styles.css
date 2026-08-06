@@ -14,6 +14,13 @@
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body { margin: 0; min-height: 100vh; color: var(--ink); background: radial-gradient(circle at 78% 2%, #fff9ec 0, transparent 28%), linear-gradient(135deg, #e8f1ee, #edf2f5 62%, #e6eeeb); font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif; }
+body[data-weather="clear"] { background: radial-gradient(circle at 75% 4%, rgba(255, 222, 157, .78), transparent 25%), linear-gradient(135deg, #f5eee1, #eaf2ee 58%, #e5eeea); }
+body[data-weather="cloudy"] { background: radial-gradient(circle at 78% 0%, rgba(211, 224, 231, .9), transparent 30%), linear-gradient(135deg, #e2eaed, #edf2f3 60%, #dfe9e8); }
+body[data-weather="rain"] { background: radial-gradient(circle at 80% 0%, rgba(154, 193, 207, .72), transparent 28%), linear-gradient(135deg, #dce9ee, #e8eff1 58%, #dce9e8); }
+body[data-weather="snow"] { background: radial-gradient(circle at 80% 0%, rgba(255, 255, 255, .95), transparent 32%), linear-gradient(135deg, #eef2f4, #f7f8f5 60%, #e8eef0); }
+body[data-weather="night"] { color: #e9eff3; background: radial-gradient(circle at 78% 4%, rgba(102, 132, 164, .42), transparent 28%), linear-gradient(135deg, #263749, #334452 60%, #243b42); }
+body[data-weather="night"] .app-shell { --paper: rgba(39, 53, 66, .94); --ink: #e9eff3; --muted: #b7c5cc; --line: rgba(216, 231, 237, .24); }
+body[data-weather="night"] .day-stage, body[data-weather="night"] .weather-card, body[data-weather="night"] .sync-note { background: rgba(37, 51, 63, .82); }
 body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .28; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.09'/%3E%3C/svg%3E"); }
 button, input, textarea, select { font: inherit; }
 button { color: inherit; }
