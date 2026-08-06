@@ -1,0 +1,14 @@
+{
+  "name": "明日复明日",
+  "short_name": "明日复明日",
+  "description": "不催促、不评判，今天没做完的，明天还可以继续。",
+  "lang": "zh-CN",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eaf1ee",
+  "theme_color": "#eaf1ee",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

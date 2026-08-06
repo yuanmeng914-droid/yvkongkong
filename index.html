@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#eaf1ee" />
     <meta name="description" content="明日复明日——不催促、不评判，今天没做完的，明天还可以继续。" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <title>明日复明日</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=3.0.0" />
   </head>
   <body>
     <main class="app-shell">
@@ -17,6 +19,7 @@
         </a>
         <nav class="main-nav" aria-label="主要导航">
           <button class="nav-link active" data-view-link="today" type="button">我的明日</button>
+          <button class="nav-link" data-view-link="important-days" type="button">重要日子</button>
           <button class="nav-link" data-view-link="feedback" type="button">说点什么</button>
         </nav>
         <button class="account-button" id="accountButton" type="button">
@@ -28,10 +31,12 @@
       <section class="view active" id="todayView" data-view="today">
         <div class="day-stage" aria-labelledby="dayTitle">
           <div class="day-heading">
-            <div>
+            <div class="day-copy">
               <p class="eyebrow" id="relativeDay">今天</p>
               <h1 id="dayTitle"></h1>
               <p class="day-whisper" id="dayWhisper">不用一次做好所有事。</p>
+              <p class="quote-source" id="quoteSource"></p>
+              <button class="quote-refresh" id="quoteRefresh" type="button">换一句</button>
             </div>
             <nav class="date-nav" aria-label="切换日期">
               <button id="prevDay" type="button" aria-label="前一天">←</button>
@@ -40,11 +45,36 @@
             </nav>
           </div>
 
+          <section class="weather-card" id="weatherCard" aria-label="今日天气">
+            <div class="weather-main">
+              <span class="weather-symbol" id="weatherSymbol" aria-hidden="true">☼</span>
+              <div>
+                <p class="eyebrow">今天的天气</p>
+                <p class="weather-reading" id="weatherReading">还没有选择城市</p>
+                <p class="weather-hint" id="weatherHint">天气只负责路过，不负责安排你。</p>
+              </div>
+            </div>
+            <form class="weather-form" id="weatherForm">
+              <label class="sr-only" for="weatherCity">城市</label>
+              <input id="weatherCity" maxlength="30" placeholder="输入城市，例如杭州" />
+              <button type="submit">更新</button>
+            </form>
+          </section>
+
           <form class="task-composer" id="taskForm">
             <label class="sr-only" for="taskInput">添加一件想做的事</label>
             <input id="taskInput" autocomplete="off" maxlength="120" placeholder="如果愿意，今天想做点什么？" required />
+            <label class="time-field" for="taskTime">
+              <span>时间</span>
+              <input id="taskTime" type="time" aria-label="任务时间（可选）" />
+            </label>
             <button type="submit">放进今天</button>
           </form>
+
+          <aside class="gentle-reminders" id="gentleReminders" hidden aria-live="polite">
+            <p class="eyebrow">现在可以看看</p>
+            <div id="reminderList"></div>
+          </aside>
 
           <div class="sync-note" id="syncNote">
             <span class="sync-icon" aria-hidden="true">⌁</span>
@@ -72,6 +102,25 @@
             </div>
             <button class="advance-button" id="advanceDay" type="button">剩下的，明天继续 <span>→</span></button>
           </footer>
+        </div>
+      </section>
+
+      <section class="view" id="importantDaysView" data-view="important-days" aria-labelledby="importantDaysTitle">
+        <div class="important-layout">
+          <header class="important-header">
+            <div>
+              <p class="eyebrow">值得记住的以后</p>
+              <h1 id="importantDaysTitle">重要日子</h1>
+              <p>生日、交作业、纪念日，都可以提前一点被想起。</p>
+            </div>
+            <button class="primary-button compact-button" id="openImportantDay" type="button">记下一个日子</button>
+          </header>
+          <div class="important-grid" id="importantDaysList"></div>
+          <div class="important-empty" id="importantDaysEmpty" hidden>
+            <span aria-hidden="true">○</span>
+            <h2>这里还很安静</h2>
+            <p>等有一个值得期待或需要记住的日子，再写下来。</p>
+          </div>
         </div>
       </section>
 
@@ -122,6 +171,25 @@
       </li>
     </template>
 
+    <template id="importantDayTemplate">
+      <article class="important-card">
+        <div class="countdown-mark">
+          <strong class="countdown-number"></strong>
+          <span class="countdown-unit"></span>
+        </div>
+        <div class="important-copy">
+          <p class="important-kind"></p>
+          <h2 class="important-name"></h2>
+          <p class="important-meta"></p>
+          <p class="important-note"></p>
+        </div>
+        <div class="important-actions">
+          <button class="important-edit" type="button">编辑</button>
+          <button class="important-delete" type="button" aria-label="删除这个重要日子">×</button>
+        </div>
+      </article>
+    </template>
+
     <dialog class="modal" id="authDialog">
       <button class="modal-close" data-close-dialog="authDialog" aria-label="关闭" type="button">×</button>
       <div class="auth-copy">
@@ -129,11 +197,13 @@
         <h2 id="authTitle">欢迎回来</h2>
         <p id="authSubtitle">登录后，任务会在你的设备之间同步。</p>
       </div>
-      <form id="authForm">
+      <form id="authForm" novalidate>
         <label for="authEmail">邮箱</label>
         <input id="authEmail" type="email" autocomplete="email" required />
+        <p class="field-error" id="authEmailError"></p>
         <label for="authPassword">密码</label>
         <input id="authPassword" type="password" autocomplete="current-password" minlength="8" required />
+        <p class="field-error" id="authPasswordError"></p>
         <p class="form-error" id="authError"></p>
         <button class="primary-button" id="authSubmit" type="submit">登录</button>
       </form>
@@ -143,6 +213,71 @@
       </div>
     </dialog>
 
+    <dialog class="modal important-modal" id="importantDayDialog">
+      <button class="modal-close" data-close-dialog="importantDayDialog" aria-label="关闭" type="button">×</button>
+      <p class="eyebrow">留给未来的一张纸条</p>
+      <h2 id="importantDialogTitle">记下一个重要日子</h2>
+      <form id="importantDayForm">
+        <input id="importantDayId" type="hidden" />
+        <label for="importantName">这是什么日子？</label>
+        <input id="importantName" maxlength="80" placeholder="例如：交作业、小林生日" required />
+        <div class="form-pair">
+          <div>
+            <label for="importantDate">日期</label>
+            <input id="importantDate" type="date" required />
+          </div>
+          <div>
+            <label for="importantType">类型</label>
+            <select id="importantType">
+              <option value="deadline">待完成</option>
+              <option value="birthday">生日</option>
+              <option value="anniversary">纪念日</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-pair">
+          <div>
+            <label for="importantRemindDays">提前提醒</label>
+            <select id="importantRemindDays">
+              <option value="0">当天</option>
+              <option value="1">提前 1 天</option>
+              <option value="3" selected>提前 3 天</option>
+              <option value="7">提前 7 天</option>
+              <option value="14">提前 14 天</option>
+              <option value="30">提前 30 天</option>
+            </select>
+          </div>
+          <label class="repeat-check"><input id="importantYearly" type="checkbox" /><span>每年重复</span></label>
+        </div>
+        <label for="importantNote">备注 <small>选填</small></label>
+        <textarea id="importantNote" maxlength="240" placeholder="想提前准备什么，或者留一句祝福"></textarea>
+        <button class="primary-button" id="importantSubmit" type="submit">保存这个日子</button>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="taskEditDialog">
+      <button class="modal-close" data-close-dialog="taskEditDialog" aria-label="关闭" type="button">×</button>
+      <p class="eyebrow">重新安排也没关系</p>
+      <h2>编辑这件事</h2>
+      <form id="taskEditForm">
+        <input id="taskEditId" type="hidden" />
+        <label for="taskEditText">事情</label>
+        <input id="taskEditText" maxlength="120" required />
+        <div class="form-pair">
+          <div>
+            <label for="taskEditDate">放在哪一天</label>
+            <input id="taskEditDate" type="date" required />
+          </div>
+          <div>
+            <label for="taskEditTime">时间 <small>选填</small></label>
+            <input id="taskEditTime" type="time" />
+          </div>
+        </div>
+        <button class="primary-button" type="submit">保存修改</button>
+      </form>
+    </dialog>
+
     <dialog class="modal account-modal" id="accountDialog">
       <button class="modal-close" data-close-dialog="accountDialog" aria-label="关闭" type="button">×</button>
       <p class="eyebrow">我的账号</p>
@@ -150,6 +285,7 @@
       <p class="account-state"><span></span> 所有任务已安全同步</p>
       <div class="account-actions">
         <button id="exportData" type="button">导出我的任务</button>
+        <button id="openSettings" type="button">提醒与显示设置</button>
         <button id="openPrivacy" type="button">隐私与数据</button>
         <button id="signOut" type="button">退出登录</button>
         <button class="danger-link" id="requestDeletion" type="button">申请删除账号和数据</button>
@@ -167,8 +303,27 @@
       </div>
     </dialog>
 
-    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <dialog class="modal settings-modal" id="settingsDialog">
+      <button class="modal-close" data-close-dialog="settingsDialog" aria-label="关闭" type="button">×</button>
+      <p class="eyebrow">给明天留一点余地</p>
+      <h2>提醒与显示设置</h2>
+      <div class="setting-row">
+        <div><strong>浏览器提醒权限</strong><p id="notificationState">尚未开启</p></div>
+        <button class="secondary-button" id="enableNotifications" type="button">允许提醒</button>
+      </div>
+      <div class="setting-row">
+        <div><strong>减少动态效果</strong><p>保留安静的页面节奏。</p></div>
+        <label class="switch-control"><input id="reduceMotionToggle" type="checkbox" /><span></span></label>
+      </div>
+      <p class="settings-note">系统提醒需要浏览器支持；即使不开启，打开网站时仍会看到站内提醒。</p>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite">
+      <span id="toastMessage"></span>
+      <button id="toastAction" type="button" hidden></button>
+    </div>
+    <noscript><p class="noscript-note">请开启浏览器的 JavaScript，才能保存和管理你的事情。</p></noscript>
     <script src="config.js"></script>
-    <script type="module" src="app.js"></script>
+    <script type="module" src="app.js?v=3.0.0"></script>
   </body>
 </html>
