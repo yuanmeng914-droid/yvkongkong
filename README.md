@@ -52,6 +52,29 @@ window.APP_CONFIG = {
 - `manifest.webmanifest`、`icon.svg`、`sw.js` 和 `offline.html` 用于安装与离线基础能力。
 - `config.js` 的 `weatherEndpoint` 需要填写你部署的天气 Edge Function 地址；不要把天气服务密钥写进前端。
 - 天气函数示例位于 `supabase/functions/weather/index.ts`，部署前在 Supabase Secrets 中设置 `QWEATHER_KEY`。
+
+## 天气与设备推送上线
+
+天气函数部署后，`config.js` 已使用：
+
+`https://hjzjheodfuxlzwdvludu.supabase.co/functions/v1/weather`
+
+在 Supabase Edge Functions 中部署 `weather`，并在 Secrets 中设置 `QWEATHER_KEY`。
+
+设备推送还需要生成一组 VAPID 密钥。将公钥填入 `config.js` 的 `pushPublicKey`；私钥只保存到 Supabase Secrets，不要提交到 GitHub：
+
+- `VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_SUBJECT`（例如 `mailto:你的开发者邮箱`）
+- `CRON_SECRET`
+
+然后部署 `supabase/functions/push-reminders/index.ts`。在 Supabase SQL Editor 执行 `supabase/upgrade-2.1.sql`，其中包含推送订阅和通知去重表。
+
+最后在 Supabase Cron 中每分钟调用：
+
+`https://hjzjheodfuxlzwdvludu.supabase.co/functions/v1/push-reminders`
+
+请求头带上 `x-cron-secret: 你的 CRON_SECRET`。用户登录后，在设置里点击“允许提醒”，浏览器才会创建设备推送订阅。
 - `supabase/upgrade-2.1.sql` 同时准备了用户偏好和推送订阅表，真正的后台推送还需要配置 VAPID 密钥、Edge Function 和 Cron。
 - PWA 推送在 iPhone 上需要用户先把网站添加到主屏幕，再主动允许通知。
 

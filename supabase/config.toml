@@ -1,0 +1,2 @@
+[functions.weather]
+verify_jwt = false

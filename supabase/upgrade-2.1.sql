@@ -74,3 +74,12 @@ create policy "Users manage own push subscriptions" on public.push_subscriptions
 
 grant select, insert, update, delete on public.user_preferences to authenticated;
 grant select, insert, update, delete on public.push_subscriptions to authenticated;
+
+create table if not exists public.notification_deliveries (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  reminder_key text not null unique,
+  sent_at timestamptz not null default now()
+);
+
+alter table public.notification_deliveries enable row level security;

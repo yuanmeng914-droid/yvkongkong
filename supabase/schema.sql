@@ -67,6 +67,13 @@ create table if not exists public.push_subscriptions (
   last_used_at timestamptz
 );
 
+create table if not exists public.notification_deliveries (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  reminder_key text not null unique,
+  sent_at timestamptz not null default now()
+);
+
 create index if not exists tasks_user_id_idx on public.tasks(user_id);
 create index if not exists tasks_user_day_idx on public.tasks(user_id, scheduled_day);
 create index if not exists feedback_user_id_idx on public.feedback(user_id);
@@ -79,6 +86,7 @@ alter table public.account_deletion_requests enable row level security;
 alter table public.important_days enable row level security;
 alter table public.user_preferences enable row level security;
 alter table public.push_subscriptions enable row level security;
+alter table public.notification_deliveries enable row level security;
 
 create policy "Users read own tasks" on public.tasks for select to authenticated using ((select auth.uid()) = user_id);
 create policy "Users create own tasks" on public.tasks for insert to authenticated with check ((select auth.uid()) = user_id);

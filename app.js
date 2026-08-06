@@ -72,6 +72,7 @@ const state = {
   reminderSeen: new Set(),
   toastAction: null,
   weather: { city: localStorage.getItem(WEATHER_CITY_KEY) || "", reading: "", hint: "天气只负责路过，不负责安排你。", symbol: "☼", loaded: false },
+  push: { supported: false, subscribed: false },
 };
 
 async function init() {
@@ -85,6 +86,7 @@ async function init() {
   if (["today", "important-days", "feedback"].includes(initialView)) switchView(initialView);
   if (config.supabaseUrl && config.supabasePublishableKey) await initCloud();
   if (state.weather.city && config.weatherEndpoint) await loadWeather(state.weather.city);
+  if (state.weather.city && config.weatherEndpoint) setInterval(() => loadWeather(state.weather.city), 30 * 60 * 1000);
   checkReminders();
   setInterval(checkReminders, 30000);
 }
@@ -117,6 +119,7 @@ async function applySession(session) {
     await loadCloudTasks();
     await importLocalImportantDays();
     await loadCloudImportantDays();
+    await syncPushSubscription();
   } else {
     state.tasks = loadLocalTasks();
     state.importantDays = loadImportantDays();
@@ -217,11 +220,30 @@ function renderWeather() {
   $("#weatherSymbol").textContent = state.weather.symbol;
 }
 
+function setWeatherMood(mood) {
+  const allowed = ["clear", "cloudy", "rain", "snow", "night", "unknown"];
+  const value = allowed.includes(mood) ? mood : "unknown";
+  document.body.dataset.weather = value;
+  const colors = { clear: "#f6dca9", cloudy: "#c8d6df", rain: "#a8c5d1", snow: "#e8edf1", night: "#273649", unknown: "#eaf1ee" };
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", colors[value]);
+}
+
+function weatherMood(icon, text = "") {
+  const code = String(icon || "");
+  const value = `${code} ${text || ""}`.toLowerCase();
+  if (/^4\d\d/.test(code) || /(snow|ice|霜|雪|冻)/i.test(value)) return "snow";
+  if (/^3\d\d/.test(code) || /(rain|shower|storm|雷|雨|阵)/i.test(value)) return "rain";
+  if (/^1\d\d/.test(code) || /(cloud|overcast|阴|云)/i.test(value)) return "cloudy";
+  const hour = new Date().getHours();
+  return hour < 6 || hour >= 19 ? "night" : "clear";
+}
+
 async function loadWeather(city) {
   const cleanCity = city.trim();
   if (!cleanCity) {
     state.weather = { city: "", reading: "", hint: "天气只负责路过，不负责安排你。", symbol: "☼", loaded: false };
     localStorage.removeItem(WEATHER_CITY_KEY);
+    setWeatherMood("unknown");
     renderWeather();
     return;
   }
@@ -230,6 +252,7 @@ async function loadWeather(city) {
   state.weather.reading = "正在等天气抵达";
   renderWeather();
   if (!config.weatherEndpoint) {
+    setWeatherMood("unknown");
     state.weather.reading = "城市已经记下";
     state.weather.hint = "接入天气服务后，这里会显示真实天气。";
     renderWeather();
@@ -246,7 +269,9 @@ async function loadWeather(city) {
     state.weather.symbol = now.symbol || weatherSymbol(now.icon);
     state.weather.hint = payload.hint || "天气只负责路过，不负责安排你。";
     state.weather.loaded = true;
+    setWeatherMood(weatherMood(now.icon, now.text));
   } catch {
+    setWeatherMood("unknown");
     state.weather.reading = "天气暂时没有抵达";
     state.weather.hint = "可以先继续今天的事情，晚些时候再看看。";
   }
@@ -255,9 +280,9 @@ async function loadWeather(city) {
 
 function weatherSymbol(icon) {
   const code = String(icon || "");
-  if (/rain|3[0-9]|4[0-9]/i.test(code)) return "☂";
-  if (/cloud|1[01]/i.test(code)) return "☁";
-  if (/snow|5[0-9]/i.test(code)) return "❄";
+  if (/^3\d\d/.test(code)) return "☂";
+  if (/^4\d\d/.test(code)) return "❄";
+  if (/^1\d\d/.test(code) && code !== "100") return "☁";
   return "☼";
 }
 
@@ -265,11 +290,9 @@ function renderTasks() {
   const today = todayKey();
   const offset = daysBetween(today, state.selectedDay);
   $("#relativeDay").textContent = offset === 0 ? "今天" : offset === 1 ? "明天" : offset === -1 ? "昨天" : offset > 1 ? `${offset} 天后` : `${Math.abs(offset)} 天前`;
-  $("#dayTitle").textContent = formatLong(state.selectedDay).replace("星期", "周");
-  const quote = getQuote(state.selectedDay);
-  $("#dayWhisper").textContent = offset < 0 ? "已经走过的日子，也值得轻轻回看。" : offset > 0 ? "先放在这里，到时候再慢慢做。" : quote.text;
-  $("#quoteSource").textContent = offset === 0 ? `——${quote.source}` : "";
-  $("#quoteRefresh").hidden = offset !== 0;
+  const formattedDay = formatLong(state.selectedDay);
+  $("#dayTitle").textContent = formattedDay ? formattedDay.replace("星期", "周") : state.selectedDay;
+  renderQuote();
 
   const tasks = state.tasks
     .filter((task) => task.day === state.selectedDay && !task.deletedAt)
@@ -292,6 +315,13 @@ function getQuote(day) {
   return literaryQuotes[choice % literaryQuotes.length];
 }
 
+function renderQuote() {
+  const quote = getQuote(state.selectedDay);
+  $("#dayWhisper").textContent = quote.text;
+  $("#quoteSource").textContent = `——${quote.source}`;
+  $("#quoteRefresh").hidden = false;
+}
+
 function refreshQuote() {
   try {
     const choices = JSON.parse(localStorage.getItem(QUOTE_KEY) || "{}");
@@ -299,7 +329,7 @@ function refreshQuote() {
     choices[state.selectedDay] = (current + 1) % literaryQuotes.length;
     localStorage.setItem(QUOTE_KEY, JSON.stringify(choices));
   } catch { /* localStorage unavailable: keep the deterministic quote */ }
-  renderTasks();
+  renderQuote();
 }
 
 function createTaskNode(task) {
@@ -586,10 +616,40 @@ function updateSettingsUI() {
 }
 
 async function requestNotifications() {
+  if (!state.user) return showToast("登录后才能把提醒送到你的设备");
+  if (!config.pushPublicKey) return showToast("推送服务还没有配置完成");
   if (!("Notification" in window)) return showToast("这个浏览器暂不支持系统提醒");
   const permission = await Notification.requestPermission();
+  if (permission === "granted") await syncPushSubscription(true);
   updateSettingsUI();
   showToast(permission === "granted" ? "提醒权限已经打开" : "可以继续使用站内提醒");
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+}
+
+async function syncPushSubscription(requested = false) {
+  const supported = Boolean(state.user && config.pushPublicKey && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window);
+  state.push.supported = supported;
+  if (!supported || Notification.permission !== "granted") return false;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription && requested) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(config.pushPublicKey) });
+    if (!subscription || !state.supabase) return false;
+    const { error } = await state.supabase.from("push_subscriptions").upsert({ user_id: state.user.id, endpoint: subscription.endpoint, subscription: subscription.toJSON(), last_used_at: new Date().toISOString() }, { onConflict: "endpoint" });
+    if (error) throw error;
+    state.push.subscribed = true;
+    return true;
+  } catch (error) {
+    console.warn("Push subscription unavailable", error);
+    state.push.subscribed = false;
+    return false;
+  }
 }
 
 function applyReduceMotion(enabled) {
