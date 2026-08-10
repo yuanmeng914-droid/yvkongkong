@@ -11,6 +11,8 @@ create table if not exists public.tasks (
   completed_at timestamptz,
   carry_count integer not null default 0 check (carry_count >= 0),
   history jsonb not null default '[]'::jsonb,
+  repeat_rule jsonb,
+  recurrence_id uuid references public.tasks(id) on delete cascade,
   deleted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -40,6 +42,22 @@ create table if not exists public.feedback (
   app_version text,
   created_at timestamptz not null default now()
 );
+
+create table if not exists public.mood_entries (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  mood_date date not null,
+  mood text,
+  note text check (note is null or char_length(note) <= 120),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, mood_date)
+);
+
+alter table public.mood_entries enable row level security;
+create policy "Users read own moods" on public.mood_entries for select to authenticated using ((select auth.uid()) = user_id);
+create policy "Users create own moods" on public.mood_entries for insert to authenticated with check ((select auth.uid()) = user_id);
+create policy "Users update own moods" on public.mood_entries for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users delete own moods" on public.mood_entries for delete to authenticated using ((select auth.uid()) = user_id);
 
 create table if not exists public.account_deletion_requests (
   id bigint generated always as identity primary key,
