@@ -5,6 +5,32 @@
 alter table public.tasks
   add column if not exists remind_time time;
 
+alter table public.tasks
+  add column if not exists repeat_rule jsonb;
+
+alter table public.tasks
+  add column if not exists recurrence_id uuid references public.tasks(id) on delete cascade;
+
+create table if not exists public.mood_entries (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  mood_date date not null,
+  mood text,
+  note text check (note is null or char_length(note) <= 120),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, mood_date)
+);
+
+alter table public.mood_entries enable row level security;
+drop policy if exists "Users read own moods" on public.mood_entries;
+drop policy if exists "Users create own moods" on public.mood_entries;
+drop policy if exists "Users update own moods" on public.mood_entries;
+drop policy if exists "Users delete own moods" on public.mood_entries;
+create policy "Users read own moods" on public.mood_entries for select to authenticated using ((select auth.uid()) = user_id);
+create policy "Users create own moods" on public.mood_entries for insert to authenticated with check ((select auth.uid()) = user_id);
+create policy "Users update own moods" on public.mood_entries for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users delete own moods" on public.mood_entries for delete to authenticated using ((select auth.uid()) = user_id);
+
 create table if not exists public.important_days (
   id uuid primary key,
   user_id uuid not null references auth.users(id) on delete cascade,

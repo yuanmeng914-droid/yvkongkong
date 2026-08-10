@@ -19,6 +19,8 @@
         </a>
         <nav class="main-nav" aria-label="主要导航">
           <button class="nav-link active" data-view-link="today" type="button">我的明日</button>
+          <button class="nav-link" data-view-link="growth" type="button">成长记录</button>
+          <button class="nav-link" data-view-link="memories" type="button">我的记忆</button>
           <button class="nav-link" data-view-link="important-days" type="button">重要日子</button>
           <button class="nav-link" data-view-link="feedback" type="button">说点什么</button>
         </nav>
@@ -34,6 +36,7 @@
             <div class="day-copy">
               <p class="eyebrow" id="relativeDay">今天</p>
               <h1 id="dayTitle"></h1>
+              <p class="calendar-info" id="calendarInfo"></p>
               <p class="day-whisper" id="dayWhisper">不用一次做好所有事。</p>
               <p class="quote-source" id="quoteSource"></p>
               <button class="quote-refresh" id="quoteRefresh" type="button">换一句</button>
@@ -61,12 +64,39 @@
             </form>
           </section>
 
+          <section class="mood-card" aria-label="今日心情">
+            <div>
+              <p class="eyebrow">今天的心情</p>
+              <p class="mood-hint">给今天留一个轻轻的标记。</p>
+            </div>
+            <div class="mood-controls">
+              <select id="moodSelect" aria-label="选择今天的心情">
+                <option value="">还没有选择</option>
+                <option value="平静">🌿 平静</option>
+                <option value="开心">☀️ 开心</option>
+                <option value="疲惫">🌙 疲惫</option>
+                <option value="焦虑">🌧️ 有些焦虑</option>
+                <option value="低落">🍂 有些低落</option>
+              </select>
+              <input id="moodNote" maxlength="120" placeholder="想留一句话吗？" aria-label="心情备注" />
+              <button class="secondary-button" id="saveMood" type="button">记下</button>
+            </div>
+          </section>
+
           <form class="task-composer" id="taskForm">
             <label class="sr-only" for="taskInput">添加一件想做的事</label>
             <input id="taskInput" autocomplete="off" maxlength="120" placeholder="如果愿意，今天想做点什么？" required />
             <label class="time-field" for="taskTime">
               <span>时间</span>
               <input id="taskTime" type="time" aria-label="任务时间（可选）" />
+            </label>
+            <label class="repeat-field" for="taskRepeat">
+              <span>重复</span>
+              <select id="taskRepeat" aria-label="任务重复频率">
+                <option value="">不重复</option>
+                <option value="daily">每天</option>
+                <option value="weekly">每周</option>
+              </select>
             </label>
             <button type="submit">放进今天</button>
           </form>
@@ -102,6 +132,50 @@
             </div>
             <button class="advance-button" id="advanceDay" type="button">剩下的，明天继续 <span>→</span></button>
           </footer>
+        </div>
+      </section>
+
+      <section class="view" id="growthView" data-view="growth" aria-labelledby="growthTitle">
+        <div class="growth-layout">
+          <header class="growth-header">
+            <div>
+              <p class="eyebrow">把今天留给未来的自己</p>
+              <h1 id="growthTitle">成长记录</h1>
+              <p>不需要写得完整，留下一点真实，就已经足够。</p>
+            </div>
+            <div class="growth-date" id="growthDateLabel">今天</div>
+          </header>
+          <form class="review-card" id="reviewForm">
+            <label for="reviewHighlight">今天有什么值得记下？</label>
+            <textarea id="reviewHighlight" maxlength="500" placeholder="哪怕只是一件很小的事……"></textarea>
+            <label for="reviewUnfinished">还有什么没有完成？</label>
+            <textarea id="reviewUnfinished" maxlength="500" placeholder="可以留白，也可以写下明天想继续的事……"></textarea>
+            <label for="reviewNext">明天想带走什么？</label>
+            <textarea id="reviewNext" maxlength="500" placeholder="一个念头、一个方向，或者一句给自己的话……"></textarea>
+            <div class="review-actions">
+              <span>这不是打卡，只是一页留给自己的记录。</span>
+              <button class="primary-button" type="submit">保存今天的记录</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="view" id="memoriesView" data-view="memories" aria-labelledby="memoriesTitle">
+        <div class="memories-layout">
+          <header class="memories-header">
+            <div>
+              <p class="eyebrow">只保存你愿意留下的</p>
+              <h1 id="memoriesTitle">我的记忆</h1>
+              <p>目标、兴趣、习惯和经历，都由你决定是否被记住。</p>
+            </div>
+            <button class="primary-button compact-button" id="openMemory" type="button">记下一件事</button>
+          </header>
+          <div class="memory-list" id="memoryList"></div>
+          <div class="memory-empty" id="memoryEmpty">
+            <span aria-hidden="true">○</span>
+            <h2>这里还没有长期记忆</h2>
+            <p>先写下一件你希望未来的自己记得的事。</p>
+          </div>
         </div>
       </section>
 
@@ -253,6 +327,27 @@
         <label for="importantNote">备注 <small>选填</small></label>
         <textarea id="importantNote" maxlength="240" placeholder="想提前准备什么，或者留一句祝福"></textarea>
         <button class="primary-button" id="importantSubmit" type="submit">保存这个日子</button>
+      </form>
+    </dialog>
+
+    <dialog class="modal memory-modal" id="memoryDialog">
+      <button class="modal-close" data-close-dialog="memoryDialog" aria-label="关闭" type="button">×</button>
+      <p class="eyebrow">留给未来的自己</p>
+      <h2 id="memoryDialogTitle">记下一件事</h2>
+      <form id="memoryForm">
+        <input id="memoryId" type="hidden" />
+        <label for="memoryCategory">这属于什么？</label>
+        <select id="memoryCategory">
+          <option value="goal">我的目标</option>
+          <option value="preference">我的偏好</option>
+          <option value="habit">我的习惯</option>
+          <option value="experience">我的经历</option>
+          <option value="observation">我的观察</option>
+        </select>
+        <label for="memoryContent">想让未来的自己记住什么？</label>
+        <textarea id="memoryContent" maxlength="500" placeholder="例如：我正在准备英语考试，希望每周留出三晚学习。" required></textarea>
+        <p class="form-hint">只有你主动保存的内容，才会进入长期记忆。</p>
+        <button class="primary-button" id="memorySubmit" type="submit">保存这段记忆</button>
       </form>
     </dialog>
 

@@ -5,6 +5,9 @@ const FEEDBACK_GUARD_KEY = "mingri-last-feedback-v1";
 const CARRY_UNDO_KEY = "mingri-last-carry-v1";
 const QUOTE_KEY = "mingri-quote-choice-v1";
 const WEATHER_CITY_KEY = "mingri-weather-city-v1";
+const MOOD_KEY = "mingri-mood-v1";
+const REVIEW_KEY = "mingri-daily-review-v1";
+const MEMORY_KEY = "mingri-memories-v1";
 const REDUCE_MOTION_KEY = "mingri-reduce-motion-v1";
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -64,6 +67,7 @@ const completionWords = [
 const state = {
   tasks: loadLocalTasks(),
   importantDays: loadImportantDays(),
+  memories: loadLocalMemories(),
   selectedDay: todayKey(),
   user: null,
   supabase: null,
@@ -83,7 +87,7 @@ async function init() {
   registerServiceWorker();
   offerPendingCarryUndo();
   const initialView = location.hash.slice(1);
-  if (["today", "important-days", "feedback"].includes(initialView)) switchView(initialView);
+  if (["today", "growth", "memories", "important-days", "feedback"].includes(initialView)) switchView(initialView);
   if (config.supabaseUrl && config.supabasePublishableKey) await initCloud();
   if (state.weather.city && config.weatherEndpoint) await loadWeather(state.weather.city);
   if (state.weather.city && config.weatherEndpoint) setInterval(() => loadWeather(state.weather.city), 30 * 60 * 1000);
@@ -117,12 +121,22 @@ async function applySession(session) {
   if (state.user) {
     await importLocalTasks();
     await loadCloudTasks();
+    const cloudCarriedTasks = rolloverToToday();
+    if (cloudCarriedTasks.length) {
+      renderAll();
+      await Promise.all(cloudCarriedTasks.map(persistTask));
+    }
     await importLocalImportantDays();
     await loadCloudImportantDays();
+    await loadCloudMoods();
+    await loadCloudReviews();
+    await importLocalMemories();
+    await loadCloudMemories();
     await syncPushSubscription();
   } else {
     state.tasks = loadLocalTasks();
     state.importantDays = loadImportantDays();
+    state.memories = loadLocalMemories();
     renderAll();
   }
 }
@@ -132,7 +146,12 @@ function toKey(date) { return `${date.getFullYear()}-${String(date.getMonth() + 
 function fromKey(key) { const [y, m, d] = key.split("-").map(Number); return new Date(y, m - 1, d); }
 function shiftDay(key, amount) { const date = fromKey(key); date.setDate(date.getDate() + amount); return toKey(date); }
 function daysBetween(a, b) { return Math.round((fromKey(b) - fromKey(a)) / 86400000); }
-function formatLong(key) { return new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(fromKey(key)); }
+function formatLong(key) {
+  const date = fromKey(key);
+  if (Number.isNaN(date.getTime())) return "";
+  const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
+  return `${date.getMonth() + 1}月${date.getDate()}日周${weekday}`;
+}
 function formatShort(key) { return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(fromKey(key)); }
 function dateSeed(key) { return [...key].reduce((sum, char) => sum + char.charCodeAt(0), 0); }
 function nowTime() { return new Date().toTimeString().slice(0, 5); }
@@ -163,6 +182,8 @@ function normalizeTask(task) {
     history: task.history || [],
     deletedAt: task.deletedAt || null,
     syncedUserId: task.syncedUserId || null,
+    repeatRule: task.repeatRule || null,
+    recurrenceId: task.recurrenceId || null,
   };
 }
 
@@ -192,7 +213,7 @@ function saveImportantDays() { localStorage.setItem(IMPORTANT_KEY, JSON.stringif
 
 function rolloverToToday() {
   const today = todayKey();
-  let changed = false;
+  const moved = [];
   state.tasks.forEach((task) => {
     if (!task.done && !task.deletedAt && task.day < today) {
       const from = task.day;
@@ -200,17 +221,277 @@ function rolloverToToday() {
       task.carryCount += Math.max(1, daysBetween(from, today));
       task.day = today;
       task.updatedAt = Date.now();
-      changed = true;
+      moved.push(task);
     }
   });
-  if (changed) saveLocal();
+  if (moved.length) saveLocal();
+  return moved;
 }
 
 function renderAll() {
+  materializeRecurringTasks(state.selectedDay);
   renderTasks();
   renderImportantDays();
   renderReminders();
   renderWeather();
+  renderCalendarInfo();
+  renderMood();
+  renderReview();
+  renderMemories();
+}
+
+function materializeRecurringTasks(day) {
+  const target = fromKey(day);
+  const generated = [];
+  state.tasks.filter((task) => task.repeatRule && !task.deletedAt && !task.recurrenceId).forEach((base) => {
+    const start = fromKey(base.day);
+    const rule = base.repeatRule;
+    const matches = target > start && (rule.frequency === "daily" || (rule.frequency === "weekly" && target.getDay() === rule.weekday));
+    if (!matches || state.tasks.some((task) => task.recurrenceId === base.id && task.day === day && !task.deletedAt)) return;
+    generated.push(normalizeTask({
+      id: crypto.randomUUID(), text: base.text, time: base.time, day, originalDay: day,
+      createdAt: Date.now(), recurrenceId: base.id,
+    }));
+  });
+  if (!generated.length) return;
+  state.tasks.push(...generated);
+  saveLocal();
+  generated.forEach((task) => { void persistTask(task); });
+}
+
+function renderCalendarInfo() {
+  const date = fromKey(state.selectedDay);
+  if (Number.isNaN(date.getTime())) return;
+  let lunar = "";
+  try {
+    lunar = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", { month: "long", day: "numeric" }).format(date);
+  } catch { lunar = ""; }
+  const term = solarTermFor(date);
+  $("#calendarInfo").textContent = [lunar && `农历${lunar}`, term].filter(Boolean).join(" · ");
+}
+
+function solarTermFor(date) {
+  const terms = [
+    ["小寒", 1, 5.4055], ["大寒", 1, 20.12], ["立春", 2, 3.87], ["雨水", 2, 18.73],
+    ["惊蛰", 3, 5.63], ["春分", 3, 20.646], ["清明", 4, 4.81], ["谷雨", 4, 20.1],
+    ["立夏", 5, 5.52], ["小满", 5, 21.04], ["芒种", 6, 5.678], ["夏至", 6, 21.37],
+    ["小暑", 7, 7.108], ["大暑", 7, 22.83], ["立秋", 8, 7.5], ["处暑", 8, 23.13],
+    ["白露", 9, 7.646], ["秋分", 9, 23.042], ["寒露", 10, 8.318], ["霜降", 10, 23.438],
+    ["立冬", 11, 7.438], ["小雪", 11, 22.36], ["大雪", 12, 7.18], ["冬至", 12, 21.94],
+  ];
+  const year = date.getFullYear();
+  if (year < 2000 || year > 2099) return "";
+  const y = year % 100;
+  const match = terms.find(([, month, constant]) => {
+    const day = Math.floor(y * 0.2422 + constant) - Math.floor((y - 1) / 4);
+    return date.getMonth() + 1 === month && date.getDate() === day;
+  });
+  return match?.[0] || "";
+}
+
+function moodStorageKey(day) { return `${MOOD_KEY}:${day}`; }
+
+function renderMood() {
+  const saved = JSON.parse(localStorage.getItem(moodStorageKey(state.selectedDay)) || "null");
+  $("#moodSelect").value = saved?.mood || "";
+  $("#moodNote").value = saved?.note || "";
+}
+
+function saveMood() {
+  const mood = $("#moodSelect").value;
+  const note = $("#moodNote").value.trim();
+  if (!mood && !note) {
+    localStorage.removeItem(moodStorageKey(state.selectedDay));
+    void persistMood(state.selectedDay, null, null);
+    showToast("今天的心情已经留白");
+    return;
+  }
+  localStorage.setItem(moodStorageKey(state.selectedDay), JSON.stringify({ mood, note, updatedAt: Date.now() }));
+  void persistMood(state.selectedDay, mood, note);
+  showToast("今天的心情记下了");
+}
+
+async function persistMood(day, mood, note) {
+  if (!state.cloudReady) return;
+  if (!mood && !note) {
+    await state.supabase.from("mood_entries").delete().eq("user_id", state.user.id).eq("mood_date", day);
+    return;
+  }
+  await state.supabase.from("mood_entries").upsert({ user_id: state.user.id, mood_date: day, mood: mood || null, note: note || null, updated_at: new Date().toISOString() });
+}
+
+async function loadCloudMoods() {
+  const { data, error } = await state.supabase.from("mood_entries").select("mood_date,mood,note");
+  if (error) return;
+  (data || []).forEach((entry) => localStorage.setItem(moodStorageKey(entry.mood_date), JSON.stringify({ mood: entry.mood || "", note: entry.note || "" })));
+  renderMood();
+}
+
+function reviewStorageKey(day) { return `${REVIEW_KEY}:${day}`; }
+
+function renderReview() {
+  if (!$("#reviewForm")) return;
+  const saved = JSON.parse(localStorage.getItem(reviewStorageKey(state.selectedDay)) || "null");
+  $("#growthDateLabel").textContent = formatLong(state.selectedDay);
+  $("#reviewHighlight").value = saved?.highlight || "";
+  $("#reviewUnfinished").value = saved?.unfinished || "";
+  $("#reviewNext").value = saved?.next || "";
+}
+
+async function saveReview(event) {
+  event.preventDefault();
+  const day = state.selectedDay;
+  const review = {
+    day,
+    highlight: $("#reviewHighlight").value.trim(),
+    unfinished: $("#reviewUnfinished").value.trim(),
+    next: $("#reviewNext").value.trim(),
+    updatedAt: Date.now(),
+  };
+  if (!review.highlight && !review.unfinished && !review.next) {
+    localStorage.removeItem(reviewStorageKey(day));
+    await persistReview(day, null);
+    showToast("今天的记录已经留白");
+    return;
+  }
+  localStorage.setItem(reviewStorageKey(day), JSON.stringify(review));
+  await persistReview(day, review);
+  showToast("今天的记录保存好了");
+}
+
+async function persistReview(day, review) {
+  if (!state.cloudReady) return;
+  if (!review) {
+    await state.supabase.from("daily_reviews").delete().eq("user_id", state.user.id).eq("review_date", day);
+    return;
+  }
+  await state.supabase.from("daily_reviews").upsert({
+    user_id: state.user.id,
+    review_date: day,
+    highlight: review.highlight || null,
+    unfinished: review.unfinished || null,
+    next_step: review.next || null,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+async function loadCloudReviews() {
+  const { data, error } = await state.supabase.from("daily_reviews").select("review_date,highlight,unfinished,next_step");
+  if (error) return;
+  (data || []).forEach((entry) => localStorage.setItem(reviewStorageKey(entry.review_date), JSON.stringify({
+    day: entry.review_date,
+    highlight: entry.highlight || "",
+    unfinished: entry.unfinished || "",
+    next: entry.next_step || "",
+  })));
+  renderReview();
+}
+
+const memoryCategoryLabels = { goal: "目标", preference: "偏好", habit: "习惯", experience: "经历", observation: "观察" };
+
+function loadLocalMemories() {
+  try {
+    const value = JSON.parse(localStorage.getItem(MEMORY_KEY) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch { return []; }
+}
+
+function saveLocalMemories() { localStorage.setItem(MEMORY_KEY, JSON.stringify(state.memories)); }
+
+function renderMemories() {
+  if (!$("#memoryList")) return;
+  const memories = state.memories.filter((memory) => !memory.deletedAt).sort((a, b) => b.updatedAt - a.updatedAt);
+  $("#memoryList").innerHTML = "";
+  memories.forEach((memory) => {
+    const card = document.createElement("article");
+    card.className = "memory-card";
+    card.innerHTML = `<div class="memory-card-copy"><p class="memory-kind">${escapeHTML(memoryCategoryLabels[memory.category] || "记忆")}</p><p class="memory-content"></p><small>${new Date(memory.updatedAt).toLocaleDateString("zh-CN")}</small></div><div class="memory-actions"><button type="button" data-memory-edit>编辑</button><button type="button" data-memory-delete aria-label="删除这段记忆">×</button></div>`;
+    card.querySelector(".memory-content").textContent = memory.content;
+    card.querySelector("[data-memory-edit]").addEventListener("click", () => openMemoryDialog(memory));
+    card.querySelector("[data-memory-delete]").addEventListener("click", () => deleteMemory(memory.id));
+    $("#memoryList").append(card);
+  });
+  $("#memoryEmpty").hidden = memories.length > 0;
+}
+
+function openMemoryDialog(memory = null) {
+  $("#memoryId").value = memory?.id || "";
+  $("#memoryCategory").value = memory?.category || "goal";
+  $("#memoryContent").value = memory?.content || "";
+  $("#memoryDialogTitle").textContent = memory ? "修改这段记忆" : "记下一件事";
+  $("#memorySubmit").textContent = memory ? "保存修改" : "保存这段记忆";
+  $("#memoryDialog").showModal();
+}
+
+async function saveMemory(event) {
+  event.preventDefault();
+  const id = $("#memoryId").value;
+  const existing = state.memories.find((memory) => memory.id === id);
+  const memory = existing || { id: crypto.randomUUID(), createdAt: Date.now(), syncedUserId: null };
+  memory.category = $("#memoryCategory").value;
+  memory.content = $("#memoryContent").value.trim();
+  memory.updatedAt = Date.now();
+  memory.deletedAt = null;
+  if (!memory.content) return;
+  if (!existing) state.memories.push(memory);
+  saveLocalMemories();
+  renderMemories();
+  $("#memoryDialog").close();
+  await persistMemory(memory);
+  showToast(existing ? "这段记忆已经更新" : "这段记忆已经保存");
+}
+
+async function deleteMemory(id) {
+  const memory = state.memories.find((entry) => entry.id === id);
+  if (!memory) return;
+  memory.deletedAt = new Date().toISOString();
+  memory.updatedAt = Date.now();
+  saveLocalMemories();
+  renderMemories();
+  await persistMemory(memory);
+  showToast("这段记忆已经删除");
+}
+
+async function persistMemory(memory) {
+  if (!state.cloudReady) return;
+  const row = {
+    id: memory.id,
+    user_id: state.user.id,
+    category: memory.category,
+    content: memory.content,
+    source: "user",
+    created_at: new Date(memory.createdAt).toISOString(),
+    updated_at: new Date(memory.updatedAt).toISOString(),
+    deleted_at: memory.deletedAt || null,
+  };
+  const { error } = await state.supabase.from("user_memories").upsert(row);
+  if (error) showToast("记忆已保存在本地，云端稍后重试");
+}
+
+async function importLocalMemories() {
+  const pending = loadLocalMemories().filter((memory) => memory.syncedUserId !== state.user.id);
+  for (const memory of pending) {
+    memory.syncedUserId = state.user.id;
+    await persistMemory(memory);
+  }
+  saveLocalMemories();
+}
+
+async function loadCloudMemories() {
+  const { data, error } = await state.supabase.from("user_memories").select("id,category,content,source,created_at,updated_at,deleted_at");
+  if (error) return;
+  state.memories = (data || []).map((row) => ({
+    id: row.id,
+    category: row.category,
+    content: row.content,
+    source: row.source || "user",
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at).getTime(),
+    deletedAt: row.deleted_at || null,
+    syncedUserId: state.user.id,
+  }));
+  saveLocalMemories();
+  renderMemories();
 }
 
 function renderWeather() {
@@ -380,8 +661,11 @@ async function saveTaskEdit(event) {
   showToast("这件事已经重新安排好");
 }
 
-async function addTask(text, time) {
-  const task = normalizeTask({ id: crypto.randomUUID(), text, time: time || null, day: state.selectedDay, originalDay: state.selectedDay, createdAt: Date.now() });
+async function addTask(text, time, repeatFrequency) {
+  const task = normalizeTask({
+    id: crypto.randomUUID(), text, time: time || null, day: state.selectedDay, originalDay: state.selectedDay,
+    createdAt: Date.now(), repeatRule: repeatFrequency ? { frequency: repeatFrequency, weekday: fromKey(state.selectedDay).getDay() } : null,
+  });
   state.tasks.push(task);
   saveLocal();
   renderAll();
@@ -669,13 +953,15 @@ async function persistTask(task) {
     completed_at: task.completedAt,
     carry_count: task.carryCount,
     history: task.history,
+    repeat_rule: task.repeatRule,
+    recurrence_id: task.recurrenceId,
     deleted_at: task.deletedAt || null,
     created_at: new Date(task.createdAt).toISOString(),
     updated_at: new Date(task.updatedAt).toISOString(),
   };
   let { error } = await state.supabase.from("tasks").upsert(row);
-  if (error && /remind_time|schema cache/i.test(error.message)) {
-    const { remind_time, ...legacyRow } = row;
+  if (error && /remind_time|repeat_rule|recurrence_id|schema cache/i.test(error.message)) {
+    const { remind_time, repeat_rule, recurrence_id, ...legacyRow } = row;
     ({ error } = await state.supabase.from("tasks").upsert(legacyRow));
   }
   if (error) { console.error(error); showToast("云端同步稍后会重试"); return false; }
@@ -700,6 +986,8 @@ async function loadCloudTasks() {
     done: Boolean(row.completed_at),
     carryCount: row.carry_count,
     history: row.history || [],
+    repeatRule: row.repeat_rule,
+    recurrenceId: row.recurrence_id,
     syncedUserId: state.user.id,
   }));
   saveLocal();
@@ -932,9 +1220,10 @@ function bindEvents() {
     const input = $("#taskInput");
     const text = input.value.trim();
     if (!text) return;
-    addTask(text, $("#taskTime").value);
+    addTask(text, $("#taskTime").value, $("#taskRepeat").value);
     input.value = "";
     $("#taskTime").value = "";
+    $("#taskRepeat").value = "";
     input.focus();
   });
   $("#prevDay").addEventListener("click", () => { state.selectedDay = shiftDay(state.selectedDay, -1); renderAll(); });
@@ -943,7 +1232,9 @@ function bindEvents() {
   $("#advanceDay").addEventListener("click", advanceDay);
   $$('[data-view-link]').forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); switchView(button.dataset.viewLink); }));
   $("#openImportantDay").addEventListener("click", () => openImportantDayDialog());
+  $("#openMemory").addEventListener("click", () => openMemoryDialog());
   $("#importantDayForm").addEventListener("submit", saveImportantDay);
+  $("#memoryForm").addEventListener("submit", saveMemory);
   $("#taskEditForm").addEventListener("submit", saveTaskEdit);
   $("#importantType").addEventListener("change", (event) => { if (["birthday", "anniversary"].includes(event.target.value)) $("#importantYearly").checked = true; });
   $("#accountButton").addEventListener("click", () => { if (state.user) { $("#accountEmail").textContent = state.user.email; $("#accountDialog").showModal(); } else openAuth(); });
@@ -961,6 +1252,8 @@ function bindEvents() {
   $("#enableNotifications").addEventListener("click", requestNotifications);
   $("#reduceMotionToggle").addEventListener("change", (event) => { const enabled = event.target.checked; localStorage.setItem(REDUCE_MOTION_KEY, enabled ? "1" : "0"); applyReduceMotion(enabled); });
   $("#quoteRefresh").addEventListener("click", refreshQuote);
+  $("#saveMood").addEventListener("click", saveMood);
+  $("#reviewForm").addEventListener("submit", saveReview);
   $("#weatherForm").addEventListener("submit", (event) => { event.preventDefault(); loadWeather($("#weatherCity").value); });
   $("#requestDeletion").addEventListener("click", requestDeletion);
   $("#toastAction").addEventListener("click", async () => {
