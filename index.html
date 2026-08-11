@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <title>明日复明日</title>
-    <link rel="stylesheet" href="styles.css?v=3.0.0" />
+    <link rel="stylesheet" href="styles.css?v=3.1.0" />
   </head>
   <body>
     <main class="app-shell">
@@ -22,12 +22,17 @@
           <button class="nav-link" data-view-link="growth" type="button">成长记录</button>
           <button class="nav-link" data-view-link="memories" type="button">我的记忆</button>
           <button class="nav-link" data-view-link="important-days" type="button">重要日子</button>
-          <button class="nav-link" data-view-link="feedback" type="button">说点什么</button>
         </nav>
-        <button class="account-button" id="accountButton" type="button">
-          <span class="account-dot" aria-hidden="true"></span>
-          <span id="accountLabel">登录</span>
-        </button>
+        <div class="topbar-actions">
+          <button class="feedback-entry" data-view-link="feedback" type="button">
+            <span class="feedback-entry-long">写给开发者</span>
+            <span class="feedback-entry-short">反馈</span>
+          </button>
+          <button class="account-button" id="accountButton" type="button">
+            <span class="account-dot" aria-hidden="true"></span>
+            <span id="accountLabel">登录</span>
+          </button>
+        </div>
       </header>
 
       <section class="view active" id="todayView" data-view="today">
@@ -48,6 +53,7 @@
             </nav>
           </div>
 
+          <div class="day-context">
           <section class="weather-card" id="weatherCard" aria-label="今日天气">
             <div class="weather-main">
               <span class="weather-symbol" id="weatherSymbol" aria-hidden="true">☼</span>
@@ -83,6 +89,12 @@
             </div>
           </section>
 
+          <aside class="gentle-reminders" id="gentleReminders" hidden aria-live="polite">
+            <p class="eyebrow">重要日子提醒</p>
+            <div id="reminderList"></div>
+          </aside>
+          </div>
+
           <form class="task-composer" id="taskForm">
             <label class="sr-only" for="taskInput">添加一件想做的事</label>
             <input id="taskInput" autocomplete="off" maxlength="120" placeholder="如果愿意，今天想做点什么？" required />
@@ -100,11 +112,6 @@
             </label>
             <button type="submit">放进今天</button>
           </form>
-
-          <aside class="gentle-reminders" id="gentleReminders" hidden aria-live="polite">
-            <p class="eyebrow">重要日子提醒</p>
-            <div id="reminderList"></div>
-          </aside>
 
           <div class="sync-note" id="syncNote">
             <span class="sync-icon" aria-hidden="true">⌁</span>
@@ -137,13 +144,24 @@
 
       <section class="view" id="growthView" data-view="growth" aria-labelledby="growthTitle">
         <div class="growth-layout">
+          <div class="growth-journal">
+            <aside class="growth-index" aria-label="成长记录索引">
+              <p class="eyebrow">成长日记</p>
+              <div class="growth-date" id="growthDateLabel">今天</div>
+              <ol class="growth-index-list">
+                <li><span>01</span>今天做过的事</li>
+                <li><span>02</span>尚未完成的事</li>
+                <li><span>03</span>想带给明天</li>
+              </ol>
+              <p class="growth-index-note">不是打卡，只是把走过的这一天轻轻收好。</p>
+            </aside>
+            <main class="growth-entry">
           <header class="growth-header">
             <div>
               <p class="eyebrow">把今天留给未来的自己</p>
               <h1 id="growthTitle">成长记录</h1>
               <p>不需要写得完整，留下一点真实，就已经足够。</p>
             </div>
-            <div class="growth-date" id="growthDateLabel">今天</div>
           </header>
           <form class="review-card" id="reviewForm">
             <label for="reviewHighlight">今天有什么值得记下？</label>
@@ -157,6 +175,33 @@
               <button class="primary-button" type="submit">保存今天的记录</button>
             </div>
           </form>
+          <section class="ai-insight-card" id="aiInsightCard" aria-labelledby="aiInsightTitle">
+            <div class="ai-insight-heading">
+              <p class="eyebrow">留一点空间，听听今天</p>
+              <h2 id="aiInsightTitle">AI 看看今天</h2>
+              <p>它只会根据今天的任务、心情和复盘，留下一点温和的观察。</p>
+            </div>
+            <div class="ai-insight-actions">
+              <button class="primary-button" id="aiInsightAction" type="button">AI 看看今天</button>
+              <p id="aiInsightStatus" role="status">登录后，可以为今天留下一段 AI 小结。</p>
+            </div>
+            <div class="ai-insight-result" id="aiInsightResult" hidden>
+              <article>
+                <h3>今天的小结</h3>
+                <p id="aiInsightSummary"></p>
+              </article>
+              <article>
+                <h3>温和的观察</h3>
+                <p id="aiInsightObservation"></p>
+              </article>
+              <article>
+                <h3>明天的一小步</h3>
+                <p id="aiInsightSuggestion"></p>
+              </article>
+            </div>
+          </section>
+            </main>
+          </div>
         </div>
       </section>
 
