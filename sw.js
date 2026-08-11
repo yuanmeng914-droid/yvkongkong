@@ -1,5 +1,5 @@
-const CACHE_NAME = "mingri-shell-4.0";
-const APP_SHELL = ["./", "./index.html", "./styles.css?v=3.0.0", "./app.js?v=3.0.0", "./config.js?v=4.0.0", "./manifest.webmanifest", "./icon.svg", "./offline.html"];
+const CACHE_NAME = "mingri-shell-4.1";
+const APP_SHELL = ["./", "./index.html", "./styles.css?v=3.1.0", "./app.js?v=3.0.0", "./config.js?v=4.0.0", "./manifest.webmanifest", "./icon.svg", "./offline.html"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));

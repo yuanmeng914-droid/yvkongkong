@@ -1,2 +1,5 @@
 [functions.weather]
 verify_jwt = false
+
+[functions.growth-agent]
+verify_jwt = true

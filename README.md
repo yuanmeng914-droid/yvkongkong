@@ -78,6 +78,18 @@ window.APP_CONFIG = {
 - `supabase/upgrade-2.1.sql` 同时准备了用户偏好和推送订阅表，真正的后台推送还需要配置 VAPID 密钥、Edge Function 和 Cron。
 - PWA 推送在 iPhone 上需要用户先把网站添加到主屏幕，再主动允许通知。
 
+## AI 每日成长分析（AI-2）
+
+Growth Agent 使用 Supabase Secret 中的 `GLM_API_KEY` 与可选的 `GLM_MODEL` 调用智谱 GLM；模型密钥不会进入 `app.js`、`config.js` 或其他前端文件。
+
+首次上线 AI-2 前，请在 Supabase SQL Editor 完整运行 `supabase/upgrade-ai-insights.sql`，它只会创建用户自己的 AI 分析结果表，不会修改任务、心情、复盘或记忆数据。然后部署：
+
+```powershell
+supabase.cmd functions deploy growth-agent --project-ref hjzjheodfuxlzwdvludu
+```
+
+用户在“成长记录”页点击“AI 看看今天”后，Growth Agent 只会读取同一天的任务统计、心情与每日复盘；不发送任务标题，也不会读取长期记忆。结果会保存为该用户当日的一份小结；只有点击“重新看看今天”才会再次调用模型并覆盖原结果。
+
 ## 开发者反馈后台
 
 反馈只有 `app_metadata.role = developer` 的账号可读取。请在 Supabase 服务端为开发者账号设置该字段，切勿通过前端的 `user_metadata` 授权。

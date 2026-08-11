@@ -77,6 +77,10 @@ const state = {
   toastAction: null,
   weather: { city: localStorage.getItem(WEATHER_CITY_KEY) || "", reading: "", hint: "天气只负责路过，不负责安排你。", symbol: "☼", loaded: false },
   push: { supported: false, subscribed: false },
+  aiInsights: {},
+  aiInsightLoading: false,
+  aiInsightEmptyDay: "",
+  aiInsightError: "",
 };
 
 async function init() {
@@ -117,7 +121,11 @@ async function initCloud() {
 async function applySession(session) {
   state.user = session?.user || null;
   state.cloudReady = Boolean(state.user);
+  state.aiInsights = {};
+  state.aiInsightEmptyDay = "";
+  state.aiInsightError = "";
   updateAccountUI();
+  renderDailyInsight();
   if (state.user) {
     await importLocalTasks();
     await loadCloudTasks();
@@ -133,6 +141,7 @@ async function applySession(session) {
     await importLocalMemories();
     await loadCloudMemories();
     await syncPushSubscription();
+    void loadDailyInsightForSelectedDay();
   } else {
     state.tasks = loadLocalTasks();
     state.importantDays = loadImportantDays();
@@ -237,7 +246,9 @@ function renderAll() {
   renderCalendarInfo();
   renderMood();
   renderReview();
+  renderDailyInsight();
   renderMemories();
+  if (state.cloudReady) void loadDailyInsightForSelectedDay();
 }
 
 function materializeRecurringTasks(day) {
@@ -385,6 +396,89 @@ async function loadCloudReviews() {
     next: entry.next_step || "",
   })));
   renderReview();
+}
+
+function insightForDay(day) {
+  return Object.prototype.hasOwnProperty.call(state.aiInsights, day) ? state.aiInsights[day] : undefined;
+}
+
+function renderDailyInsight() {
+  const button = $("#aiInsightAction");
+  if (!button) return;
+  const day = state.selectedDay;
+  const insight = insightForDay(day);
+  const signedIn = Boolean(state.user && state.cloudReady);
+  const hasInsight = Boolean(insight?.summary && insight?.observation && insight?.tomorrow_suggestion);
+  const result = $("#aiInsightResult");
+  result.hidden = !hasInsight;
+  $("#aiInsightSummary").textContent = hasInsight ? insight.summary : "";
+  $("#aiInsightObservation").textContent = hasInsight ? insight.observation : "";
+  $("#aiInsightSuggestion").textContent = hasInsight ? insight.tomorrow_suggestion : "";
+  button.disabled = state.aiInsightLoading;
+  button.textContent = state.aiInsightLoading ? "正在认真看看…" : hasInsight ? "重新看看今天" : signedIn ? "AI 看看今天" : "登录后使用";
+  const status = $("#aiInsightStatus");
+  if (!signedIn) status.textContent = "登录后，可以为今天留下一段 AI 小结。";
+  else if (state.aiInsightLoading) status.textContent = "正在整理今天留下的内容…";
+  else if (state.aiInsightError) status.textContent = state.aiInsightError;
+  else if (state.aiInsightEmptyDay === day) status.textContent = "今天还不需要总结，也可以晚些再来。";
+  else if (hasInsight) status.textContent = `这是 ${formatLong(day)} 留下的小结；重新生成会覆盖这一版。`;
+  else status.textContent = "它只读取今天的任务统计、心情和复盘，不会读取长期记忆。";
+}
+
+async function loadDailyInsightForSelectedDay() {
+  const day = state.selectedDay;
+  if (!state.cloudReady || insightForDay(day) !== undefined) return;
+  const { data, error } = await state.supabase
+    .from("ai_daily_insights")
+    .select("insight_date,summary,observation,tomorrow_suggestion,model,updated_at")
+    .eq("insight_date", day)
+    .maybeSingle();
+  if (day !== state.selectedDay) return;
+  state.aiInsights[day] = error ? null : data || null;
+  renderDailyInsight();
+}
+
+async function requestDailyInsight(force) {
+  if (!state.user || !state.cloudReady) return openAuth();
+  if (!config.supabaseUrl || !config.supabasePublishableKey) {
+    state.aiInsightError = "AI 暂时没有连上，稍后再试。";
+    renderDailyInsight();
+    return;
+  }
+  const day = state.selectedDay;
+  state.aiInsightLoading = true;
+  state.aiInsightEmptyDay = "";
+  state.aiInsightError = "";
+  renderDailyInsight();
+  try {
+    const { data } = await state.supabase.auth.getSession();
+    if (!data.session?.access_token) throw new Error("missing_session");
+    const response = await fetch(`${config.supabaseUrl}/functions/v1/growth-agent`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${data.session.access_token}`,
+        apikey: config.supabasePublishableKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ action: "daily_analysis", context: { day, force: Boolean(force) } }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "agent_failed");
+    if (payload.result?.status === "no_daily_data") state.aiInsightEmptyDay = day;
+    else state.aiInsights[day] = payload.result;
+  } catch (error) {
+    state.aiInsightError = dailyInsightErrorMessage(error?.message);
+  } finally {
+    state.aiInsightLoading = false;
+    if (day === state.selectedDay) renderDailyInsight();
+  }
+}
+
+function dailyInsightErrorMessage(code) {
+  if (code === "missing_api_key") return "AI 正在准备中，请稍后再来。";
+  if (code === "provider_request_failed" || code === "provider_invalid_response") return "AI 暂时没有回应，可以过一会儿再试。";
+  if (code === "unauthorized") return "登录状态已过期，请重新登录后再试。";
+  return "这次没有生成成功，但今天的记录都还在。";
 }
 
 const memoryCategoryLabels = { goal: "目标", preference: "偏好", habit: "习惯", experience: "经历", observation: "观察" };
@@ -1181,6 +1275,7 @@ function switchView(name) {
   $$(".view").forEach((view) => view.classList.toggle("active", view.dataset.view === name));
   $$('[data-view-link]').forEach((button) => button.classList.toggle("active", button.dataset.viewLink === name));
   if (name === "feedback-admin") loadFeedback();
+  if (name === "growth") void loadDailyInsightForSelectedDay();
   location.hash = name;
 }
 
@@ -1254,6 +1349,7 @@ function bindEvents() {
   $("#quoteRefresh").addEventListener("click", refreshQuote);
   $("#saveMood").addEventListener("click", saveMood);
   $("#reviewForm").addEventListener("submit", saveReview);
+  $("#aiInsightAction").addEventListener("click", () => requestDailyInsight(Boolean(insightForDay(state.selectedDay))));
   $("#weatherForm").addEventListener("submit", (event) => { event.preventDefault(); loadWeather($("#weatherCity").value); });
   $("#requestDeletion").addEventListener("click", requestDeletion);
   $("#toastAction").addEventListener("click", async () => {
