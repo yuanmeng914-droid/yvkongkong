@@ -1,3 +1,11 @@
+import {
+  createTaskSyncQueue,
+  markTaskPending,
+  markTaskSynced,
+  mergeTaskRecords,
+  needsTaskSync,
+} from "./task-sync.mjs?v=1.0.0";
+
 const STORAGE_KEY = "mingri-tasks-v2";
 const LEGACY_KEY = "xuri-tasks-v1";
 const IMPORTANT_KEY = "mingri-important-days-v1";
@@ -12,6 +20,7 @@ const REDUCE_MOTION_KEY = "mingri-reduce-motion-v1";
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const config = window.APP_CONFIG || {};
+const taskSyncQueue = createTaskSyncQueue();
 
 const literaryQuotes = [
   { text: "且将新火试新茶，诗酒趁年华。", source: "苏轼《望江南·超然台作》" },
@@ -84,7 +93,6 @@ const state = {
 };
 
 async function init() {
-  rolloverToToday();
   bindEvents();
   renderAll();
   applyReduceMotion(localStorage.getItem(REDUCE_MOTION_KEY) === "1");
@@ -93,6 +101,10 @@ async function init() {
   const initialView = location.hash.slice(1);
   if (["today", "growth", "memories", "important-days", "feedback"].includes(initialView)) switchView(initialView);
   if (config.supabaseUrl && config.supabasePublishableKey) await initCloud();
+  else {
+    rolloverToToday();
+    renderAll();
+  }
   if (state.weather.city && config.weatherEndpoint) await loadWeather(state.weather.city);
   if (state.weather.city && config.weatherEndpoint) setInterval(() => loadWeather(state.weather.city), 30 * 60 * 1000);
   checkReminders();
@@ -127,8 +139,8 @@ async function applySession(session) {
   updateAccountUI();
   renderDailyInsight();
   if (state.user) {
-    await importLocalTasks();
     await loadCloudTasks();
+    await flushPendingTaskSync();
     const cloudCarriedTasks = rolloverToToday();
     if (cloudCarriedTasks.length) {
       renderAll();
@@ -144,6 +156,7 @@ async function applySession(session) {
     void loadDailyInsightForSelectedDay();
   } else {
     state.tasks = loadLocalTasks();
+    rolloverToToday();
     state.importantDays = loadImportantDays();
     state.memories = loadLocalMemories();
     renderAll();
@@ -191,6 +204,7 @@ function normalizeTask(task) {
     history: task.history || [],
     deletedAt: task.deletedAt || null,
     syncedUserId: task.syncedUserId || null,
+    syncPending: Boolean(task.syncPending),
     repeatRule: task.repeatRule || null,
     recurrenceId: task.recurrenceId || null,
   };
@@ -217,7 +231,10 @@ function normalizeImportantDay(item) {
   };
 }
 
-function saveLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.tasks)); }
+function saveLocal() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.tasks));
+  if ($("#syncNote")) updateAccountUI();
+}
 function saveImportantDays() { localStorage.setItem(IMPORTANT_KEY, JSON.stringify(state.importantDays)); }
 
 function rolloverToToday() {
@@ -230,6 +247,7 @@ function rolloverToToday() {
       task.carryCount += Math.max(1, daysBetween(from, today));
       task.day = today;
       task.updatedAt = Date.now();
+      markTaskPending(task);
       moved.push(task);
     }
   });
@@ -261,7 +279,7 @@ function materializeRecurringTasks(day) {
     if (!matches || state.tasks.some((task) => task.recurrenceId === base.id && task.day === day && !task.deletedAt)) return;
     generated.push(normalizeTask({
       id: crypto.randomUUID(), text: base.text, time: base.time, day, originalDay: day,
-      createdAt: Date.now(), recurrenceId: base.id,
+      createdAt: Date.now(), recurrenceId: base.id, syncPending: true,
     }));
   });
   if (!generated.length) return;
@@ -748,6 +766,7 @@ async function saveTaskEdit(event) {
   task.day = newDay;
   task.time = $("#taskEditTime").value || null;
   task.updatedAt = Date.now();
+  markTaskPending(task);
   saveLocal();
   renderAll();
   $("#taskEditDialog").close();
@@ -758,7 +777,7 @@ async function saveTaskEdit(event) {
 async function addTask(text, time, repeatFrequency) {
   const task = normalizeTask({
     id: crypto.randomUUID(), text, time: time || null, day: state.selectedDay, originalDay: state.selectedDay,
-    createdAt: Date.now(), repeatRule: repeatFrequency ? { frequency: repeatFrequency, weekday: fromKey(state.selectedDay).getDay() } : null,
+    createdAt: Date.now(), syncPending: true, repeatRule: repeatFrequency ? { frequency: repeatFrequency, weekday: fromKey(state.selectedDay).getDay() } : null,
   });
   state.tasks.push(task);
   saveLocal();
@@ -772,6 +791,7 @@ async function toggleTask(id) {
   task.done = !task.done;
   task.completedAt = task.done ? new Date().toISOString() : null;
   task.updatedAt = Date.now();
+  markTaskPending(task);
   saveLocal();
   renderAll();
   await persistTask(task);
@@ -787,6 +807,7 @@ async function deleteTask(id) {
   if (!task) return;
   task.deletedAt = new Date().toISOString();
   task.updatedAt = Date.now();
+  markTaskPending(task);
   saveLocal();
   renderAll();
   await persistTask(task);
@@ -805,6 +826,7 @@ async function advanceDay() {
       task.day = next;
       task.carryCount += 1;
       task.updatedAt = Date.now();
+      markTaskPending(task);
       moved.push(task);
     }
   });
@@ -830,6 +852,7 @@ async function undoCarry(snapshots, from) {
     task.carryCount = snapshot.carryCount;
     task.history = task.history.slice(0, snapshot.historyLength);
     task.updatedAt = Date.now();
+    markTaskPending(task);
     restored.push(task);
   });
   localStorage.removeItem(CARRY_UNDO_KEY);
@@ -1037,9 +1060,11 @@ function applyReduceMotion(enabled) {
 
 async function persistTask(task) {
   if (!state.cloudReady) return false;
+  const userId = state.user.id;
+  const revision = Number(task.updatedAt);
   const row = {
     id: task.id,
-    user_id: state.user.id,
+    user_id: userId,
     text: task.text,
     scheduled_day: task.day,
     remind_time: task.time || null,
@@ -1053,22 +1078,35 @@ async function persistTask(task) {
     created_at: new Date(task.createdAt).toISOString(),
     updated_at: new Date(task.updatedAt).toISOString(),
   };
-  let { error } = await state.supabase.from("tasks").upsert(row);
-  if (error && /remind_time|repeat_rule|recurrence_id|schema cache/i.test(error.message)) {
-    const { remind_time, repeat_rule, recurrence_id, ...legacyRow } = row;
-    ({ error } = await state.supabase.from("tasks").upsert(legacyRow));
-  }
-  if (error) { console.error(error); showToast("云端同步稍后会重试"); return false; }
-  task.syncedUserId = state.user.id;
-  saveLocal();
-  return true;
+  return taskSyncQueue.enqueue(task.id, async () => {
+    if (!state.cloudReady || state.user?.id !== userId) return false;
+    let { error } = await state.supabase.from("tasks").upsert(row);
+    if (error && /remind_time|repeat_rule|recurrence_id|schema cache/i.test(error.message)) {
+      const { remind_time, repeat_rule, recurrence_id, ...legacyRow } = row;
+      ({ error } = await state.supabase.from("tasks").upsert(legacyRow));
+    }
+    if (error) {
+      console.error(error);
+      updateAccountUI();
+      showToast("云端同步稍后会自动重试");
+      return false;
+    }
+    const current = state.tasks.find((item) => item.id === task.id);
+    if (current && markTaskSynced(current, userId, revision)) saveLocal();
+    return true;
+  }).catch((error) => {
+    console.error(error);
+    updateAccountUI();
+    showToast("云端同步稍后会自动重试");
+    return false;
+  });
 }
 
 async function loadCloudTasks() {
   const localById = new Map(state.tasks.map((task) => [task.id, task]));
   const { data, error } = await state.supabase.from("tasks").select("*").is("deleted_at", null).order("created_at");
   if (error) { showToast("暂时无法读取云端任务"); return; }
-  state.tasks = data.map((row) => normalizeTask({
+  const cloudTasks = data.map((row) => normalizeTask({
     id: row.id,
     text: row.text,
     day: row.scheduled_day,
@@ -1084,13 +1122,32 @@ async function loadCloudTasks() {
     recurrenceId: row.recurrence_id,
     syncedUserId: state.user.id,
   }));
+  state.tasks = mergeTaskRecords(state.tasks, cloudTasks, state.user.id).map(normalizeTask);
   saveLocal();
   renderAll();
+  await flushPendingTaskSync();
 }
 
 async function importLocalTasks() {
-  const pending = loadLocalTasks().filter((task) => task.syncedUserId !== state.user.id);
-  for (const task of pending) await persistTask(task);
+  state.tasks = loadLocalTasks();
+  await flushPendingTaskSync();
+}
+
+let pendingTaskFlush = null;
+async function flushPendingTaskSync() {
+  if (!state.cloudReady || pendingTaskFlush) return pendingTaskFlush || false;
+  const pending = state.tasks.filter((task) => needsTaskSync(task, state.user.id));
+  if (!pending.length) {
+    updateAccountUI();
+    return true;
+  }
+  pendingTaskFlush = Promise.all(pending.map(persistTask)).then((results) => results.every(Boolean));
+  try {
+    return await pendingTaskFlush;
+  } finally {
+    pendingTaskFlush = null;
+    updateAccountUI();
+  }
 }
 
 async function persistImportantDay(item) {
@@ -1141,11 +1198,13 @@ async function importLocalImportantDays() {
 
 function updateAccountUI() {
   const signed = Boolean(state.user);
+  const pending = signed && state.tasks.some((task) => needsTaskSync(task, state.user.id));
   $("#accountButton").classList.toggle("signed-in", signed);
   $("#accountLabel").textContent = signed ? (state.user.email?.split("@")[0] || "我的账号") : "登录";
-  $("#syncNote").classList.toggle("synced", signed);
-  $("#syncText").textContent = signed ? "已经保存到你的账号" : "任务只保存在这台设备";
-  $("#syncAction").textContent = signed ? "已同步" : "登录后同步";
+  $("#syncNote").classList.toggle("synced", signed && !pending);
+  $("#syncText").textContent = !signed ? "任务只保存在这台设备" : pending ? "本机已保存，正在等待云端同步" : "已经保存到你的账号";
+  $("#syncAction").textContent = !signed ? "登录后同步" : pending ? "立即重试" : "已同步";
+  $("#accountSyncState").textContent = !signed ? "登录后可同步" : pending ? "有任务等待同步" : "所有任务已安全同步";
   $("#feedbackHint").textContent = signed ? "反馈不会附带你的待办内容。" : "登录后可以发送反馈。";
   if (state.user?.app_metadata?.role === "developer" && !$("[data-view-link='feedback-admin']")) {
     const button = document.createElement("button");
@@ -1333,7 +1392,7 @@ function bindEvents() {
   $("#taskEditForm").addEventListener("submit", saveTaskEdit);
   $("#importantType").addEventListener("change", (event) => { if (["birthday", "anniversary"].includes(event.target.value)) $("#importantYearly").checked = true; });
   $("#accountButton").addEventListener("click", () => { if (state.user) { $("#accountEmail").textContent = state.user.email; $("#accountDialog").showModal(); } else openAuth(); });
-  $("#syncAction").addEventListener("click", () => { if (!state.user) openAuth(); });
+  $("#syncAction").addEventListener("click", () => { if (!state.user) openAuth(); else void flushPendingTaskSync(); });
   $$('[data-close-dialog]').forEach((button) => button.addEventListener("click", () => $("#" + button.dataset.closeDialog).close()));
   $("#authForm").addEventListener("submit", handleAuth);
   ["#authEmail", "#authPassword"].forEach((selector) => $(selector).addEventListener("input", clearAuthErrors));
@@ -1352,6 +1411,8 @@ function bindEvents() {
   $("#aiInsightAction").addEventListener("click", () => requestDailyInsight(Boolean(insightForDay(state.selectedDay))));
   $("#weatherForm").addEventListener("submit", (event) => { event.preventDefault(); loadWeather($("#weatherCity").value); });
   $("#requestDeletion").addEventListener("click", requestDeletion);
+  window.addEventListener("online", () => { void flushPendingTaskSync(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) void flushPendingTaskSync(); });
   $("#toastAction").addEventListener("click", async () => {
     const action = state.toastAction;
     if (!action) return;

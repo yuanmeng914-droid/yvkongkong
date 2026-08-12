@@ -422,7 +422,7 @@
       <button class="modal-close" data-close-dialog="accountDialog" aria-label="关闭" type="button">×</button>
       <p class="eyebrow">我的账号</p>
       <h2 id="accountEmail"></h2>
-      <p class="account-state"><span></span> 所有任务已安全同步</p>
+      <p class="account-state"><span></span> <span id="accountSyncState">所有任务已安全同步</span></p>
       <div class="account-actions">
         <button id="exportData" type="button">导出我的任务</button>
         <button id="openSettings" type="button">提醒与显示设置</button>
@@ -464,6 +464,6 @@
     </div>
     <noscript><p class="noscript-note">请开启浏览器的 JavaScript，才能保存和管理你的事情。</p></noscript>
     <script src="config.js?v=4.0.0"></script>
-    <script type="module" src="app.js?v=3.0.0"></script>
+    <script type="module" src="app.js?v=3.0.1"></script>
   </body>
 </html>

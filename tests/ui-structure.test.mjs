@@ -47,6 +47,9 @@ test("首页上下文和成长日记布局存在", () => {
 
 test("PWA 缓存引用新的 3.1.0 页面资源", () => {
   assert.match(html, /styles\.css\?v=3\.1\.0/);
+  assert.match(html, /app\.js\?v=3\.0\.1/);
   assert.match(sw, /styles\.css\?v=3\.1\.0/);
-  assert.match(sw, /mingri-shell-4\.1/);
+  assert.match(sw, /app\.js\?v=3\.0\.1/);
+  assert.match(sw, /task-sync\.mjs\?v=1\.0\.0/);
+  assert.match(sw, /mingri-shell-4\.2/);
 });
