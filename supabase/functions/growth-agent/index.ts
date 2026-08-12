@@ -4,6 +4,7 @@ import { ProviderError } from "./providers/types.ts";
 import type { JsonObject } from "./providers/types.ts";
 import { parseAgentRequest } from "./request-validation.js";
 import { buildDailyInsightRequest, hasDailySource, validateDailyInsight } from "./daily-insight.js";
+import { finalizeMemoryAwareInsight, readInsightMemoryMeta, selectRelevantMemories } from "./memory-loop.js";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -60,12 +61,13 @@ async function getSession(authHeader: string) {
 async function createDailyAnalysis(client: ReturnType<typeof createClient>, userId: string, context: { day: string; force: boolean }) {
   const { data: cached, error: cachedError } = await client
     .from("ai_daily_insights")
-    .select("insight_date,summary,observation,tomorrow_suggestion,model,updated_at")
+    .select("insight_date,summary,observation,tomorrow_suggestion,model,updated_at,source_snapshot")
     .eq("insight_date", context.day)
     .maybeSingle();
   if (cachedError) throw new ProviderError("data_store_unavailable", 503);
   if (cached && !context.force) {
-    return json({ ok: true, action: "daily_analysis", result: { ...cached, cached: true } });
+    const { source_snapshot, ...cachedInsight } = cached;
+    return json({ ok: true, action: "daily_analysis", result: { ...cachedInsight, ...readInsightMemoryMeta(source_snapshot), cached: true } });
   }
 
   const snapshot = await loadDailySnapshot(client, context.day);
@@ -73,25 +75,37 @@ async function createDailyAnalysis(client: ReturnType<typeof createClient>, user
     return json({ ok: true, action: "daily_analysis", result: { status: "no_daily_data", insight_date: context.day } });
   }
 
+  const memoryRecords = await loadMemoryRecords(client);
+  const selectedMemories = selectRelevantMemories(memoryRecords);
   const provider = createModelProvider();
-  const request = buildDailyInsightRequest(snapshot);
+  const request = buildDailyInsightRequest(snapshot, selectedMemories);
   const generated = await provider.generateJson({ action: "daily_analysis", ...request });
   const insight = validateDailyInsight(generated.data);
   if (!insight) throw new ProviderError("provider_invalid_response", 502);
+  const result = finalizeMemoryAwareInsight(insight, selectedMemories, memoryRecords);
 
   const row = {
     user_id: userId,
     insight_date: context.day,
-    summary: insight.summary,
-    observation: insight.observation,
-    tomorrow_suggestion: insight.tomorrow_suggestion,
-    source_snapshot: request.context,
+    summary: result.summary,
+    observation: result.observation,
+    tomorrow_suggestion: result.tomorrow_suggestion,
+    source_snapshot: { ...request.context, ai_result_meta: { referenced_memories: result.referenced_memories, memory_candidate: result.memory_candidate } },
     model: generated.model,
     updated_at: new Date().toISOString(),
   };
   const { error: saveError } = await client.from("ai_daily_insights").upsert(row);
   if (saveError) throw new ProviderError("data_store_unavailable", 503);
-  return json({ ok: true, action: "daily_analysis", result: { ...insight, insight_date: context.day, model: generated.model, cached: false } });
+  return json({ ok: true, action: "daily_analysis", result: { ...result, insight_date: context.day, model: generated.model, cached: false } });
+}
+
+async function loadMemoryRecords(client: ReturnType<typeof createClient>) {
+  const { data, error } = await client
+    .from("user_memories")
+    .select("id,category,content,updated_at,deleted_at")
+    .is("deleted_at", null);
+  if (error) throw new ProviderError("data_store_unavailable", 503);
+  return data || [];
 }
 
 async function loadDailySnapshot(client: ReturnType<typeof createClient>, day: string) {

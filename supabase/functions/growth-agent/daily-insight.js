@@ -8,7 +8,7 @@ export function validateInsightDate(value) {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? value : null;
 }
 
-export function buildDailyInsightRequest(snapshot) {
+export function buildDailyInsightRequest(snapshot, memories = []) {
   const context = {
     day: snapshot.day,
     tasks: {
@@ -26,6 +26,9 @@ export function buildDailyInsightRequest(snapshot) {
       unfinished: cleanText(snapshot.review?.unfinished, 500),
       next: cleanText(snapshot.review?.next, 500),
     },
+    memories: (Array.isArray(memories) ? memories : []).map((item) => ({
+      id: cleanText(item.id, 80), type: cleanText(item.type, 20), content: cleanText(item.content, 500),
+    })),
   };
 
   return {
@@ -33,8 +36,11 @@ export function buildDailyInsightRequest(snapshot) {
       "请为用户写一份温和的每日成长分析。",
       "只能根据提供的数据表达，不要编造事实，不要评价用户是否努力或懒惰。",
       "不要做心理、医疗或诊断性质的判断，不要命令用户完成任务。",
-      "只返回 JSON：summary、observation、tomorrow_suggestion 三个字段；每个字段 1 至 300 个字符。",
+      "只返回 JSON：summary、observation、tomorrow_suggestion、referenced_memory_ids、memory_candidate。",
       "summary 是今天的小结；observation 是温和观察；tomorrow_suggestion 只提供一条可选择的小建议。",
+      "referenced_memory_ids 只能填写你实际使用且 context.memories 中存在的 id；没有引用时返回空数组。",
+      "memory_candidate 只能是 null 或 {type,content,reason}；数据不足以形成长期模式时必须返回 null，不能仅凭一天给用户下结论。",
+      "不要批评、监督或制造完成率焦虑；不要使用‘你就是’‘你总是’等绝对表达。",
     ].join("\n"),
     context,
   };
@@ -50,6 +56,10 @@ export function validateDailyInsight(data) {
     if (!text || text.length > MAX_INSIGHT_LENGTH) return null;
     result[field] = text;
   }
+  result.referenced_memory_ids = Array.isArray(data.referenced_memory_ids)
+    ? data.referenced_memory_ids.filter((id) => typeof id === "string").slice(0, 8)
+    : [];
+  result.memory_candidate = data.memory_candidate ?? null;
   return result;
 }
 

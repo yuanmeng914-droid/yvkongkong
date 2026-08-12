@@ -45,6 +45,21 @@ test("首页上下文和成长日记布局存在", () => {
   assert.match(css, /@media \(max-width: 720px\)/);
 });
 
+test("AI memory references and candidate actions exist", () => {
+  for (const id of [
+    "aiInsightMemories",
+    "aiInsightMemoryCount",
+    "aiInsightMemoryList",
+    "aiMemoryCandidate",
+    "aiMemoryCandidateContent",
+    "aiMemoryCandidateReason",
+    "rememberCandidate",
+    "editCandidate",
+    "dismissCandidate",
+  ]) assert.equal(count(html, `id="${id}"`), 1, `${id} must exist exactly once`);
+  assert.match(css, /\.ai-memory-candidate\s*\{/);
+});
+
 test("PWA 缓存引用新的 3.1.0 页面资源", () => {
   assert.match(html, /styles\.css\?v=3\.1\.0/);
   assert.match(html, /app\.js\?v=3\.0\.1/);

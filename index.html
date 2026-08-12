@@ -198,6 +198,20 @@
                 <h3>明天的一小步</h3>
                 <p id="aiInsightSuggestion"></p>
               </article>
+              <details class="ai-insight-memories" id="aiInsightMemories" hidden>
+                <summary id="aiInsightMemoryCount">本次没有参考长期记忆</summary>
+                <div class="ai-insight-memory-list" id="aiInsightMemoryList"></div>
+              </details>
+              <aside class="ai-memory-candidate" id="aiMemoryCandidate" hidden>
+                <p class="eyebrow">我好像发现了一件值得记住的事</p>
+                <strong id="aiMemoryCandidateContent"></strong>
+                <p id="aiMemoryCandidateReason"></p>
+                <div class="ai-memory-candidate-actions">
+                  <button class="primary-button compact-button" id="rememberCandidate" type="button">记住</button>
+                  <button class="secondary-button" id="editCandidate" type="button">编辑后记住</button>
+                  <button class="text-button" id="dismissCandidate" type="button">先不用</button>
+                </div>
+              </aside>
             </div>
           </section>
             </main>

@@ -15,7 +15,7 @@ test("rejects malformed calendar days", () => {
   assert.equal(validateInsightDate("2026-02-30"), null);
 });
 
-test("builds a model request without task titles or long-term memories", () => {
+test("builds a model request with selected memories but without hidden task or memory data", () => {
   const request = buildDailyInsightRequest({
     day: "2026-08-11",
     tasks: { total: 3, completed: 1, unfinished: 2, carried: 1 },
@@ -23,12 +23,19 @@ test("builds a model request without task titles or long-term memories", () => {
     review: { highlight: "完成了报告", unfinished: "整理材料", next: "明天先列提纲" },
     hiddenTaskTitle: "不应该上传的任务标题",
     hiddenMemory: "不应该上传的长期记忆",
-  });
+  }, [
+    { id: "memory-1", type: "goal", content: "完成自己的个人作品" },
+  ]);
 
   const serialized = JSON.stringify(request);
   assert.match(request.input, /温和/);
   assert.doesNotMatch(serialized, /不应该上传/);
   assert.deepEqual(request.context.tasks, { total: 3, completed: 1, unfinished: 2, carried: 1 });
+  assert.deepEqual(request.context.memories, [
+    { id: "memory-1", type: "goal", content: "完成自己的个人作品" },
+  ]);
+  assert.match(request.input, /referenced_memory_ids/);
+  assert.match(request.input, /memory_candidate/);
 });
 
 test("accepts the exact three user-visible insight fields", () => {
@@ -36,10 +43,14 @@ test("accepts the exact three user-visible insight fields", () => {
     summary: "今天留下了一点真实的记录。",
     observation: "你在慢慢把注意力放回眼前的事。",
     tomorrow_suggestion: "明天可以先从最轻的一步开始。",
+    referenced_memory_ids: ["memory-1"],
+    memory_candidate: null,
   }), {
     summary: "今天留下了一点真实的记录。",
     observation: "你在慢慢把注意力放回眼前的事。",
     tomorrow_suggestion: "明天可以先从最轻的一步开始。",
+    referenced_memory_ids: ["memory-1"],
+    memory_candidate: null,
   });
 });
 

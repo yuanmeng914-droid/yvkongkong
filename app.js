@@ -88,6 +88,7 @@ const state = {
   push: { supported: false, subscribed: false },
   aiInsights: {},
   aiInsightLoading: false,
+  pendingMemorySource: "user",
   aiInsightEmptyDay: "",
   aiInsightError: "",
 };
@@ -432,6 +433,15 @@ function renderDailyInsight() {
   $("#aiInsightSummary").textContent = hasInsight ? insight.summary : "";
   $("#aiInsightObservation").textContent = hasInsight ? insight.observation : "";
   $("#aiInsightSuggestion").textContent = hasInsight ? insight.tomorrow_suggestion : "";
+  const references = hasInsight && Array.isArray(insight.referenced_memories) ? insight.referenced_memories : [];
+  const memoryBox = $("#aiInsightMemories");
+  memoryBox.hidden = references.length === 0;
+  $("#aiInsightMemoryCount").textContent = `本次参考了 ${references.length} 条关于你的记录`;
+  $("#aiInsightMemoryList").innerHTML = references.map((memory) => `<p><span>${escapeHTML(memoryCategoryLabels[memory.type] || "记忆")}</span>${escapeHTML(memory.content)}</p>`).join("");
+  const candidate = hasInsight ? insight.memory_candidate : null;
+  $("#aiMemoryCandidate").hidden = !candidate;
+  $("#aiMemoryCandidateContent").textContent = candidate?.content || "";
+  $("#aiMemoryCandidateReason").textContent = candidate?.reason || "";
   button.disabled = state.aiInsightLoading;
   button.textContent = state.aiInsightLoading ? "正在认真看看…" : hasInsight ? "重新看看今天" : signedIn ? "AI 看看今天" : "登录后使用";
   const status = $("#aiInsightStatus");
@@ -440,7 +450,7 @@ function renderDailyInsight() {
   else if (state.aiInsightError) status.textContent = state.aiInsightError;
   else if (state.aiInsightEmptyDay === day) status.textContent = "今天还不需要总结，也可以晚些再来。";
   else if (hasInsight) status.textContent = `这是 ${formatLong(day)} 留下的小结；重新生成会覆盖这一版。`;
-  else status.textContent = "它只读取今天的任务统计、心情和复盘，不会读取长期记忆。";
+  else status.textContent = "它会读取今天的任务统计、心情、复盘，以及少量由你确认保存的相关记忆。";
 }
 
 async function loadDailyInsightForSelectedDay() {
@@ -448,11 +458,16 @@ async function loadDailyInsightForSelectedDay() {
   if (!state.cloudReady || insightForDay(day) !== undefined) return;
   const { data, error } = await state.supabase
     .from("ai_daily_insights")
-    .select("insight_date,summary,observation,tomorrow_suggestion,model,updated_at")
+    .select("insight_date,summary,observation,tomorrow_suggestion,model,updated_at,source_snapshot")
     .eq("insight_date", day)
     .maybeSingle();
   if (day !== state.selectedDay) return;
-  state.aiInsights[day] = error ? null : data || null;
+  const meta = data?.source_snapshot?.ai_result_meta || {};
+  state.aiInsights[day] = error ? null : data ? {
+    ...data,
+    referenced_memories: Array.isArray(meta.referenced_memories) ? meta.referenced_memories : [],
+    memory_candidate: meta.memory_candidate || null,
+  } : null;
   renderDailyInsight();
 }
 
@@ -499,6 +514,60 @@ function dailyInsightErrorMessage(code) {
   return "这次没有生成成功，但今天的记录都还在。";
 }
 
+function currentMemoryCandidate() {
+  return insightForDay(state.selectedDay)?.memory_candidate || null;
+}
+
+function normalizeMemoryText(value) {
+  return typeof value === "string" ? value.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "") : "";
+}
+
+function hasDuplicateMemory(content) {
+  const candidate = normalizeMemoryText(content);
+  if (!candidate) return false;
+  return state.memories.some((memory) => {
+    if (memory.deletedAt) return false;
+    const existing = normalizeMemoryText(memory.content);
+    if (existing === candidate) return true;
+    const shorter = existing.length <= candidate.length ? existing : candidate;
+    const longer = existing.length > candidate.length ? existing : candidate;
+    return shorter.length >= 8 && longer.includes(shorter);
+  });
+}
+
+function dismissMemoryCandidate() {
+  const insight = insightForDay(state.selectedDay);
+  if (!insight) return;
+  insight.memory_candidate = null;
+  renderDailyInsight();
+}
+
+async function rememberMemoryCandidate() {
+  const candidate = currentMemoryCandidate();
+  if (!candidate) return;
+  if (hasDuplicateMemory(candidate.content)) {
+    dismissMemoryCandidate();
+    showToast("这件事已经在你的记忆里了");
+    return;
+  }
+  const memory = {
+    id: crypto.randomUUID(), category: candidate.type, content: candidate.content,
+    source: "ai", createdAt: Date.now(), updatedAt: Date.now(), deletedAt: null, syncedUserId: null,
+  };
+  state.memories.push(memory);
+  saveLocalMemories();
+  renderMemories();
+  dismissMemoryCandidate();
+  await persistMemory(memory);
+  showToast("只在你确认后，这件事才被记住");
+}
+
+function editMemoryCandidate() {
+  const candidate = currentMemoryCandidate();
+  if (!candidate) return;
+  openMemoryDialog({ category: candidate.type, content: candidate.content, source: "ai" }, "ai");
+}
+
 const memoryCategoryLabels = { goal: "目标", preference: "偏好", habit: "习惯", experience: "经历", observation: "观察" };
 
 function loadLocalMemories() {
@@ -526,7 +595,8 @@ function renderMemories() {
   $("#memoryEmpty").hidden = memories.length > 0;
 }
 
-function openMemoryDialog(memory = null) {
+function openMemoryDialog(memory = null, source = "user") {
+  state.pendingMemorySource = memory?.source || source;
   $("#memoryId").value = memory?.id || "";
   $("#memoryCategory").value = memory?.category || "goal";
   $("#memoryContent").value = memory?.content || "";
@@ -539,17 +609,25 @@ async function saveMemory(event) {
   event.preventDefault();
   const id = $("#memoryId").value;
   const existing = state.memories.find((memory) => memory.id === id);
-  const memory = existing || { id: crypto.randomUUID(), createdAt: Date.now(), syncedUserId: null };
+  const memory = existing || { id: crypto.randomUUID(), createdAt: Date.now(), syncedUserId: null, source: state.pendingMemorySource || "user" };
   memory.category = $("#memoryCategory").value;
   memory.content = $("#memoryContent").value.trim();
   memory.updatedAt = Date.now();
   memory.deletedAt = null;
+  memory.source = memory.source || "user";
   if (!memory.content) return;
+  if (!existing && memory.source === "ai" && hasDuplicateMemory(memory.content)) {
+    $("#memoryDialog").close();
+    dismissMemoryCandidate();
+    showToast("这件事已经在你的记忆里了");
+    return;
+  }
   if (!existing) state.memories.push(memory);
   saveLocalMemories();
   renderMemories();
   $("#memoryDialog").close();
   await persistMemory(memory);
+  if (memory.source === "ai") dismissMemoryCandidate();
   showToast(existing ? "这段记忆已经更新" : "这段记忆已经保存");
 }
 
@@ -571,7 +649,7 @@ async function persistMemory(memory) {
     user_id: state.user.id,
     category: memory.category,
     content: memory.content,
-    source: "user",
+    source: memory.source || "user",
     created_at: new Date(memory.createdAt).toISOString(),
     updated_at: new Date(memory.updatedAt).toISOString(),
     deleted_at: memory.deletedAt || null,
@@ -1389,6 +1467,9 @@ function bindEvents() {
   $("#openMemory").addEventListener("click", () => openMemoryDialog());
   $("#importantDayForm").addEventListener("submit", saveImportantDay);
   $("#memoryForm").addEventListener("submit", saveMemory);
+  $("#rememberCandidate").addEventListener("click", rememberMemoryCandidate);
+  $("#editCandidate").addEventListener("click", editMemoryCandidate);
+  $("#dismissCandidate").addEventListener("click", dismissMemoryCandidate);
   $("#taskEditForm").addEventListener("submit", saveTaskEdit);
   $("#importantType").addEventListener("change", (event) => { if (["birthday", "anniversary"].includes(event.target.value)) $("#importantYearly").checked = true; });
   $("#accountButton").addEventListener("click", () => { if (state.user) { $("#accountEmail").textContent = state.user.email; $("#accountDialog").showModal(); } else openAuth(); });
