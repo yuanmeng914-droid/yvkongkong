@@ -18,9 +18,6 @@ body[data-weather="clear"] { background: radial-gradient(circle at 75% 4%, rgba(
 body[data-weather="cloudy"] { background: radial-gradient(circle at 78% 0%, rgba(211, 224, 231, .9), transparent 30%), linear-gradient(135deg, #e2eaed, #edf2f3 60%, #dfe9e8); }
 body[data-weather="rain"] { background: radial-gradient(circle at 80% 0%, rgba(154, 193, 207, .72), transparent 28%), linear-gradient(135deg, #dce9ee, #e8eff1 58%, #dce9e8); }
 body[data-weather="snow"] { background: radial-gradient(circle at 80% 0%, rgba(255, 255, 255, .95), transparent 32%), linear-gradient(135deg, #eef2f4, #f7f8f5 60%, #e8eef0); }
-body[data-weather="night"] { color: #e9eff3; background: radial-gradient(circle at 78% 4%, rgba(102, 132, 164, .42), transparent 28%), linear-gradient(135deg, #263749, #334452 60%, #243b42); }
-body[data-weather="night"] .app-shell { --paper: rgba(39, 53, 66, .94); --ink: #e9eff3; --muted: #b7c5cc; --line: rgba(216, 231, 237, .24); }
-body[data-weather="night"] .day-stage, body[data-weather="night"] .weather-card, body[data-weather="night"] .sync-note { background: rgba(37, 51, 63, .82); }
 body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .28; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.09'/%3E%3C/svg%3E"); }
 button, input, textarea, select { font: inherit; }
 button { color: inherit; }
@@ -54,12 +51,19 @@ h1 { margin: 0; font-size: clamp(40px, 7vw, 68px); line-height: .96; letter-spac
 .quote-source { margin: 7px 0 0; color: var(--leaf); font-family: SimSun, "Songti SC", serif; font-size: 11px; }
 .quote-refresh { margin-top: 10px; border: 0; border-bottom: 1px solid var(--line); padding: 0 0 2px; background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; }
 .quote-refresh:hover { color: var(--leaf); border-color: var(--leaf); }
-.day-context { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: 10px; margin-top: 16px; }
+.daily-context-disclosure { margin-top: 16px; border: 1px solid rgba(175, 197, 188, .58); border-radius: 14px; background: rgba(255,255,255,.38); }
+.daily-context-disclosure > summary, .task-options > summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; list-style: none; cursor: pointer; color: var(--muted); }
+.daily-context-disclosure > summary { min-height: 48px; padding: 0 16px; font-size: 11px; }
+.daily-context-disclosure > summary::-webkit-details-marker, .task-options > summary::-webkit-details-marker { display: none; }
+.daily-context-disclosure > summary::after, .task-options > summary::after { content: "＋"; flex: 0 0 auto; color: var(--leaf); font-weight: 800; }
+.daily-context-disclosure[open] > summary::after, .task-options[open] > summary::after { content: "－"; }
+.context-summary-label { color: var(--leaf); font-size: 12px; font-weight: 900; letter-spacing: .12em; }
+#dailyContextSummary { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day-context { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: 10px; padding: 0 10px 10px; }
 .weather-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 16px 0 2px; padding: 14px 16px; border: 1px solid rgba(175, 197, 188, .72); border-radius: 15px; background: linear-gradient(120deg, rgba(235,246,241,.82), rgba(255,255,255,.68)); }
 .day-context .weather-card, .day-context .mood-card { margin: 0; }
 .day-context .mood-card { align-items: stretch; flex-direction: column; gap: 9px; }
 .day-context .mood-controls { display: grid; grid-template-columns: minmax(104px, .8fr) minmax(0, 1.2fr) auto; min-width: 0; width: 100%; }
-.day-context .gentle-reminders { grid-column: 1 / -1; margin: 0; }
 .weather-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .weather-symbol { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.7); color: #d9954a; font-size: 25px; }
 .weather-main .eyebrow { margin: 0 0 4px; }
@@ -78,7 +82,12 @@ h1 { margin: 0; font-size: clamp(40px, 7vw, 68px); line-height: .96; letter-spac
 .date-nav { display: flex; align-items: center; gap: 5px; }
 .date-nav button { min-width: 39px; height: 39px; border: 1px solid var(--line); background: white; border-radius: 50%; cursor: pointer; }
 .date-nav #todayButton { width: auto; border-radius: 999px; padding: 0 13px; color: var(--leaf); font-size: 12px; font-weight: 700; }
-.task-composer { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; padding: 22px 0 14px; }
+.task-composer { padding: 22px 0 10px; }
+.task-primary-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+.task-options { width: max-content; max-width: 100%; margin-top: 9px; }
+.task-options > summary { justify-content: flex-start; min-height: 26px; font-size: 10px; }
+.task-options > summary #taskOptionsSummary { color: var(--leaf); }
+.task-options-fields { display: grid; grid-template-columns: auto auto; gap: 8px; margin-top: 7px; }
 input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.85); padding: 14px 16px; color: var(--ink); outline: none; }
 input:focus, textarea:focus, select:focus { border-color: var(--leaf); box-shadow: 0 0 0 3px rgba(77,128,111,.12); }
 input.invalid { border-color: var(--rose); background: #fffafa; box-shadow: 0 0 0 3px rgba(185,101,101,.1); }
@@ -90,6 +99,9 @@ input.invalid { border-color: var(--rose); background: #fffafa; box-shadow: 0 0 
 .sync-note { display: flex; align-items: center; gap: 7px; min-height: 30px; color: var(--muted); font-size: 11px; }
 .sync-note button { border: 0; padding: 0; background: transparent; color: var(--leaf); font-weight: 800; cursor: pointer; }
 .sync-note.synced .sync-icon { color: var(--leaf); }
+.sync-note.synced #syncText { display: none; }
+.sync-note.synced #syncAction { display: none; }
+.sync-note.synced { min-height: 22px; opacity: .75; }
 .progress-row { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 15px; margin-top: 8px; color: var(--muted); font-size: 11px; }
 .progress-row p { margin: 0; }
 .progress-track { height: 2px; overflow: hidden; background: var(--line); }
@@ -120,6 +132,7 @@ input.invalid { border-color: var(--rose); background: #fffafa; box-shadow: 0 0 
 .empty-state h2 { margin: 16px 0 7px; font-size: 23px; }
 .empty-state p { margin: 0; color: var(--muted); font-size: 13px; }
 .day-footer { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-top: 35px; padding-top: 22px; border-top: 1px dashed var(--line); }
+.day-footer[hidden] { display: none; }
 .day-footer p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
 .tomorrow-line { display: flex; align-items: center; gap: 8px; color: var(--leaf) !important; font-weight: 800; }
 .tomorrow-line span { width: 36px; height: 1px; background: var(--dawn); box-shadow: 42px 0 0 rgba(243,191,130,.4), 78px 0 0 rgba(243,191,130,.16); }
@@ -286,8 +299,11 @@ button:focus-visible { outline: 3px solid rgba(77,128,111,.25); outline-offset: 
   .day-heading { align-items: flex-start; flex-direction: column; }
   .date-nav { align-self: flex-end; }
   .day-context { grid-template-columns: 1fr; }
-  .day-context .gentle-reminders { grid-column: auto; }
-  .task-composer { grid-template-columns: 1fr; }
+  .daily-context-disclosure > summary { align-items: flex-start; flex-direction: column; gap: 3px; padding: 11px 14px; }
+  #dailyContextSummary { width: calc(100% - 24px); margin-left: 0; }
+  .task-primary-row { grid-template-columns: 1fr; }
+  .task-options { width: 100%; }
+  .task-options-fields { grid-template-columns: 1fr; }
   .time-field { min-height: 44px; }
   .time-field input { flex: 1; }
   .task-composer button { min-height: 44px; }

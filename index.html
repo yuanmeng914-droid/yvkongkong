@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <title>明日复明日</title>
-    <link rel="stylesheet" href="styles.css?v=3.1.0" />
+    <link rel="stylesheet" href="styles.css?v=3.2.0" />
   </head>
   <body>
     <main class="app-shell">
@@ -48,12 +48,17 @@
             </div>
             <nav class="date-nav" aria-label="切换日期">
               <button id="prevDay" type="button" aria-label="前一天">←</button>
-              <button id="todayButton" type="button">今天</button>
+              <button id="todayButton" type="button">回到今天</button>
               <button id="nextDay" type="button" aria-label="后一天">→</button>
             </nav>
           </div>
 
-          <div class="day-context">
+          <details class="daily-context-disclosure" id="dailyContextDetails">
+            <summary>
+              <span class="context-summary-label">天气与心情</span>
+              <span id="dailyContextSummary">天气与心情还没有记录</span>
+            </summary>
+            <div class="day-context">
           <section class="weather-card" id="weatherCard" aria-label="今日天气">
             <div class="weather-main">
               <span class="weather-symbol" id="weatherSymbol" aria-hidden="true">☼</span>
@@ -89,28 +94,40 @@
             </div>
           </section>
 
+            </div>
+          </details>
+
           <aside class="gentle-reminders" id="gentleReminders" hidden aria-live="polite">
             <p class="eyebrow">重要日子提醒</p>
             <div id="reminderList"></div>
           </aside>
-          </div>
 
           <form class="task-composer" id="taskForm">
-            <label class="sr-only" for="taskInput">添加一件想做的事</label>
-            <input id="taskInput" autocomplete="off" maxlength="120" placeholder="如果愿意，今天想做点什么？" required />
-            <label class="time-field" for="taskTime">
-              <span>时间</span>
-              <input id="taskTime" type="time" aria-label="任务时间（可选）" />
-            </label>
-            <label class="repeat-field" for="taskRepeat">
-              <span>重复</span>
-              <select id="taskRepeat" aria-label="任务重复频率">
-                <option value="">不重复</option>
-                <option value="daily">每天</option>
-                <option value="weekly">每周</option>
-              </select>
-            </label>
-            <button type="submit">放进今天</button>
+            <div class="task-primary-row">
+              <label class="sr-only" for="taskInput">添加一件想做的事</label>
+              <input id="taskInput" autocomplete="off" maxlength="120" placeholder="如果愿意，今天想做点什么？" required />
+              <button type="submit">放进今天</button>
+            </div>
+            <details class="task-options" id="taskOptionsDetails">
+              <summary>
+                <span>时间与重复</span>
+                <span id="taskOptionsSummary">不设置</span>
+              </summary>
+              <div class="task-options-fields">
+                <label class="time-field" for="taskTime">
+                  <span>时间</span>
+                  <input id="taskTime" type="time" aria-label="任务时间（可选）" />
+                </label>
+                <label class="repeat-field" for="taskRepeat">
+                  <span>重复</span>
+                  <select id="taskRepeat" aria-label="任务重复频率">
+                    <option value="">不重复</option>
+                    <option value="daily">每天</option>
+                    <option value="weekly">每周</option>
+                  </select>
+                </label>
+              </div>
+            </details>
           </form>
 
           <div class="sync-note" id="syncNote">
@@ -132,7 +149,7 @@
             <p>没有安排也没关系。想到什么，再写下来。</p>
           </div>
 
-          <footer class="day-footer">
+          <footer class="day-footer" id="dayFooter">
             <div>
               <p class="tomorrow-line"><span></span> 明天一直都在</p>
               <p>没完成的不会逾期，只会陪你走到下一天。</p>
@@ -478,6 +495,6 @@
     </div>
     <noscript><p class="noscript-note">请开启浏览器的 JavaScript，才能保存和管理你的事情。</p></noscript>
     <script src="config.js?v=4.0.0"></script>
-    <script type="module" src="app.js?v=3.0.1"></script>
+    <script type="module" src="app.js?v=3.0.2"></script>
   </body>
 </html>

@@ -321,10 +321,20 @@ function solarTermFor(date) {
 
 function moodStorageKey(day) { return `${MOOD_KEY}:${day}`; }
 
+function updateDailyContextSummary() {
+  const target = $("#dailyContextSummary");
+  if (!target) return;
+  const saved = JSON.parse(localStorage.getItem(moodStorageKey(state.selectedDay)) || "null");
+  const weather = state.weather.reading || state.weather.city || "天气未设置";
+  const mood = saved?.mood || "心情未记录";
+  target.textContent = `${weather} · ${mood}`;
+}
+
 function renderMood() {
   const saved = JSON.parse(localStorage.getItem(moodStorageKey(state.selectedDay)) || "null");
   $("#moodSelect").value = saved?.mood || "";
   $("#moodNote").value = saved?.note || "";
+  updateDailyContextSummary();
 }
 
 function saveMood() {
@@ -333,11 +343,13 @@ function saveMood() {
   if (!mood && !note) {
     localStorage.removeItem(moodStorageKey(state.selectedDay));
     void persistMood(state.selectedDay, null, null);
+    renderMood();
     showToast("今天的心情已经留白");
     return;
   }
   localStorage.setItem(moodStorageKey(state.selectedDay), JSON.stringify({ mood, note, updatedAt: Date.now() }));
   void persistMood(state.selectedDay, mood, note);
+  renderMood();
   showToast("今天的心情记下了");
 }
 
@@ -689,13 +701,23 @@ function renderWeather() {
   $("#weatherReading").textContent = state.weather.reading || (state.weather.city ? "正在等天气抵达" : "还没有选择城市");
   $("#weatherHint").textContent = state.weather.hint;
   $("#weatherSymbol").textContent = state.weather.symbol;
+  updateDailyContextSummary();
+}
+
+function renderTaskOptionsSummary() {
+  const target = $("#taskOptionsSummary");
+  if (!target) return;
+  const time = $("#taskTime").value;
+  const repeat = $("#taskRepeat").value;
+  const repeatLabel = repeat === "daily" ? "每天" : repeat === "weekly" ? "每周" : "";
+  target.textContent = [time, repeatLabel].filter(Boolean).join(" · ") || "不设置";
 }
 
 function setWeatherMood(mood) {
-  const allowed = ["clear", "cloudy", "rain", "snow", "night", "unknown"];
+  const allowed = ["clear", "cloudy", "rain", "snow", "unknown"];
   const value = allowed.includes(mood) ? mood : "unknown";
   document.body.dataset.weather = value;
-  const colors = { clear: "#f6dca9", cloudy: "#c8d6df", rain: "#a8c5d1", snow: "#e8edf1", night: "#273649", unknown: "#eaf1ee" };
+  const colors = { clear: "#f6dca9", cloudy: "#c8d6df", rain: "#a8c5d1", snow: "#e8edf1", unknown: "#eaf1ee" };
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", colors[value]);
 }
 
@@ -705,8 +727,7 @@ function weatherMood(icon, text = "") {
   if (/^4\d\d/.test(code) || /(snow|ice|霜|雪|冻)/i.test(value)) return "snow";
   if (/^3\d\d/.test(code) || /(rain|shower|storm|雷|雨|阵)/i.test(value)) return "rain";
   if (/^1\d\d/.test(code) || /(cloud|overcast|阴|云)/i.test(value)) return "cloudy";
-  const hour = new Date().getHours();
-  return hour < 6 || hour >= 19 ? "night" : "clear";
+  return "clear";
 }
 
 async function loadWeather(city) {
@@ -772,6 +793,8 @@ function renderTasks() {
   tasks.forEach((task) => $("#taskList").append(createTaskNode(task)));
   $("#emptyState").hidden = tasks.length > 0;
   const done = tasks.filter((task) => task.done).length;
+  const unfinished = tasks.length - done;
+  $("#dayFooter").hidden = unfinished === 0;
   $("#progressText").textContent = tasks.length ? `今天已经完成 ${done} 件，还有 ${tasks.length - done} 件可以慢慢来` : "今天还没有安排";
   $("#progressBar").style.width = tasks.length ? `${done / tasks.length * 100}%` : "0%";
   $("#taskForm button[type='submit']").textContent = offset === 0 ? "放进今天" : offset === 1 ? "放进明天" : "放进这天";
@@ -1456,8 +1479,12 @@ function bindEvents() {
     input.value = "";
     $("#taskTime").value = "";
     $("#taskRepeat").value = "";
+    renderTaskOptionsSummary();
     input.focus();
   });
+  $("#taskTime").addEventListener("input", renderTaskOptionsSummary);
+  $("#taskRepeat").addEventListener("change", renderTaskOptionsSummary);
+  renderTaskOptionsSummary();
   $("#prevDay").addEventListener("click", () => { state.selectedDay = shiftDay(state.selectedDay, -1); renderAll(); });
   $("#nextDay").addEventListener("click", () => { state.selectedDay = shiftDay(state.selectedDay, 1); renderAll(); });
   $("#todayButton").addEventListener("click", () => { state.selectedDay = todayKey(); renderAll(); });
